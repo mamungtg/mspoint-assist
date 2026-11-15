@@ -1,6 +1,25 @@
 // Small same-site crawler built on HTMLRewriter (streaming, low CPU).
 import { canonical, cleanText, isCrawlable } from "./util.js";
 
+// Pages that usually answer customer questions are crawled first; corporate,
+// legal and archive pages last, so the page budget goes where it matters.
+const GOOD = /(product|service|solution|deposit|saving|loan|lease|finance|scheme|plan|pricing|price|package|rate|offer|feature|faq|help|support|about|contact|branch|location|how-it-works|book|appointment|menu|shop|course)/i;
+const BAD = /(investor|annual|report|statement|financial-?statement|board|director|committee|shareholder|agm|disclosure|news|press|media|blog|article|career|job|vacanc|notice|tender|gallery|event|photo|video|privacy|terms|cookie|legal|sitemap|tag\/|category\/|author\/|\/page\/\d|archive|feed|wp-json|\.php\?)/i;
+
+export function urlScore(u) {
+  let path;
+  try { path = decodeURIComponent(new URL(u).pathname); } catch { return 0; }
+  let score = 0;
+  if (GOOD.test(path)) score += 3;
+  if (BAD.test(path)) score -= 4;
+  score -= Math.min(3, Math.max(0, path.split("/").filter(Boolean).length - 2)); // prefer shallow pages
+  return score;
+}
+
+function sortQueue(queue) {
+  queue.sort((a, b) => urlScore(b) - urlScore(a));
+}
+
 const UA = "MSPointAssistBot/0.1 (+https://app.mspointbd.com)";
 const MAX_HTML_BYTES = 1_500_000;
 
@@ -75,10 +94,11 @@ export async function crawlSite(rootUrl, maxPages = 12) {
     }
   } catch { /* sitemap is optional */ }
 
-  // Fetch in small parallel batches to keep total time low.
+  // Fetch in small parallel batches to keep total time low; best-scoring URLs first.
   const CONCURRENCY = 4;
   let attempts = 0;
   while (queue.length && pages.length < maxPages && attempts < maxPages * 3) {
+    if (pages.length > 0) sortQueue(queue); // keep the homepage first, then prioritise
     const batch = queue.splice(0, Math.min(CONCURRENCY, maxPages - pages.length));
     attempts += batch.length;
     const results = await Promise.all(batch.map(async (url) => {

@@ -105,7 +105,7 @@ export async function answer(env, { businessName, siteUrl, context, history, que
     }
   }
   messages.push({ role: "user", content: question });
-  const r = await env.AI.run(CHAT_MODEL, { messages, max_tokens: 500, temperature: 0.3 });
+  const r = await env.AI.run(CHAT_MODEL, { messages, max_tokens: 800, temperature: 0.3 });
   return (r.response || "").trim() || "Sorry, I couldn't generate an answer just now. Please leave your details and the team will reply.";
 }
 

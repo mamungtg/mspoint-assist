@@ -43,3 +43,13 @@ test("isEmail", () => {
   assert.ok(!isEmail("nope"));
   assert.ok(!isEmail("a@b"));
 });
+
+import { urlScore } from "../src/crawl.js";
+test("urlScore prefers product pages over investor/news pages", () => {
+  const good = urlScore("https://x.com/CVCFLBD/Products/DepositScheme");
+  const bad = urlScore("https://x.com/CVCFLBD/Investor/AnnualReports");
+  const news = urlScore("https://x.com/news/2024/05/agm-notice");
+  assert.ok(good > bad, `${good} > ${bad}`);
+  assert.ok(good > news);
+  assert.ok(urlScore("https://x.com/contact") > urlScore("https://x.com/privacy-policy"));
+});
