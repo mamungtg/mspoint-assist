@@ -123,3 +123,8 @@ th { background: var(--bg); font-weight: 600; }
   .nav .btn { padding: 8px 12px; font-size: 14px; white-space: nowrap; }
   .logo { font-size: 16px; white-space: nowrap; }
 }
+
+.pill.prio-high { background: #fde8e8; color: #b91c1c; }
+.pill.prio-medium { background: #fef3c7; color: #92400e; }
+.pill.prio-low { background: var(--bg-blue); color: var(--brand); }
+textarea { font: inherit; resize: vertical; }

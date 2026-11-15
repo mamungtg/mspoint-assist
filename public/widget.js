@@ -95,8 +95,12 @@
     });
   }
 
-  function showLead() {
-    if (leadShown) return;
+  function showLead(prefillEmail) {
+    if (leadShown) {
+      var existing = log.querySelector(".lead");
+      if (existing && prefillEmail && !existing.elements.namedItem("email").value) existing.elements.namedItem("email").value = prefillEmail;
+      return;
+    }
     leadShown = true;
     var f = document.createElement("form");
     f.className = "lead";
@@ -104,21 +108,26 @@
       "<p>Leave your details and the team will get back to you.</p>" +
       '<input name="name" maxlength="120" placeholder="Your name">' +
       '<input name="email" type="email" required maxlength="200" placeholder="Mail address *">' +
+      '<input name="company" maxlength="120" placeholder="Company (optional)">' +
       '<input name="phone" maxlength="40" placeholder="Phone (optional)">' +
       '<textarea name="message" rows="2" maxlength="2000" placeholder="How can we help?"></textarea>' +
       '<button type="submit">Send details</button>';
+    if (prefillEmail) f.elements.namedItem("email").value = prefillEmail;
     f.addEventListener("submit", function (e) {
       e.preventDefault();
       var btn = f.querySelector("button");
-      btn.disabled = true; btn.textContent = "Sending…";
+      btn.disabled = true; btn.textContent = "Sending\u2026";
       var last = history.filter(function (h) { return h.role === "user"; }).slice(-1)[0];
+      var val = function (n) { return f.elements.namedItem(n).value; };
       post("/api/leads", {
         bot: BOT,
-        name: f.elements.namedItem("name").value,
-        email: f.elements.namedItem("email").value,
-        phone: f.elements.namedItem("phone").value,
-        message: f.elements.namedItem("message").value || (last ? last.content : ""),
+        name: val("name"),
+        email: val("email"),
+        company: val("company"),
+        phone: val("phone"),
+        message: val("message") || (last ? last.content : ""),
         page_url: location.href,
+        transcript: history.slice(-10),
       }).then(function () {
         f.remove();
         add("Thanks! Your details were sent. The team will contact you soon.", "bot");
@@ -138,7 +147,7 @@
 
   $(".btn").addEventListener("click", function () { toggle(!panel.classList.contains("open")); });
   $(".x").addEventListener("click", function () { toggle(false); });
-  $(".link").addEventListener("click", showLead);
+  $(".link").addEventListener("click", function () { showLead(); });
 
   form.addEventListener("submit", function (e) {
     e.preventDefault();
@@ -149,13 +158,14 @@
     var t = document.createElement("div");
     t.className = "typing"; t.textContent = "Typing…";
     log.appendChild(t);
-    post("/api/chat", { bot: BOT, message: q, history: history }).then(function (r) {
+    post("/api/chat", { bot: BOT, message: q, history: history.slice(-6) }).then(function (r) {
       t.remove();
       add(r.reply, "bot");
       addSources(r.sources);
       history.push({ role: "user", content: q }, { role: "assistant", content: r.reply });
-      history = history.slice(-6);
-      if (r.lead_prompt) showLead();
+      history = history.slice(-10);
+      var mail = q.match(/[^\s@<>"']+@[^\s@<>"']+\.[a-z]{2,}/i);
+      if (r.lead_prompt || mail) showLead(mail ? mail[0] : undefined);
     }).catch(function (err) {
       t.remove();
       add(err.message || "Connection problem. Please try again.", "bot");

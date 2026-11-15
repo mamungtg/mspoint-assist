@@ -53,11 +53,19 @@
     <p class="note">Paste before the closing &lt;/body&gt; tag of every page where the chat should appear.</p>
     <pre id="embed" style="background:#0b2c4d;color:#e6edf3;padding:14px;border-radius:10px;white-space:pre-wrap;word-break:break-all"></pre>
 
+    <h3>Assistant settings</h3>
+    <form class="box" id="settings" style="margin-bottom:28px">
+      <label>Greeting message<input name="greeting" maxlength="300" placeholder="Hi! How can I help you today?"></label>
+      <label>Custom instructions <span class="note" style="font-weight:400">— role, tone, services to focus on, what to ask visitors. Facts still come only from your website.</span>
+        <textarea name="instructions" rows="12" maxlength="6000" placeholder="You are the assistant for … Focus on … Ask visitors about …"></textarea></label>
+      <div style="display:flex;gap:12px;align-items:center"><button class="btn" type="submit">Save settings</button><span class="note" id="setMsg"></span><span class="note" id="setCount" style="margin-left:auto"></span></div>
+    </form>
+
     <h3>Leads</h3>
     <div style="overflow-x:auto">
       <table>
-        <thead><tr><th>Date</th><th>Name</th><th>Mail</th><th>Phone</th><th>Message</th><th>Page</th></tr></thead>
-        <tbody id="leads"><tr><td colspan="6">No leads yet.</td></tr></tbody>
+        <thead><tr><th>Date</th><th>Priority</th><th>Name</th><th>Company</th><th>Mail</th><th>Phone</th><th>Request</th><th>Page</th></tr></thead>
+        <tbody id="leads"><tr><td colspan="8">No leads yet.</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -90,14 +98,35 @@ async function load() {
   $("sToday").textContent = (b.usage.find((u) => u.day === day) || {}).messages || 0;
   $("s30").textContent = b.usage.reduce((a, u) => a + u.messages, 0);
   $("embed").textContent = b.embed_code;
+  const sf = $("settings");
+  sf.elements.namedItem("greeting").value = b.greeting || "";
+  sf.elements.namedItem("instructions").value = b.instructions || "";
+  $("setCount").textContent = (b.instructions || "").length + " / 6000";
 
   const l = await api("/api/bots/" + encodeURIComponent(BOT) + "/leads");
   LEADS = l.leads;
   const tb = $("leads"); tb.innerHTML = "";
-  if (!LEADS.length) { tb.innerHTML = '<tr><td colspan="6">No leads yet.</td></tr>'; return; }
+  if (!LEADS.length) { tb.innerHTML = '<tr><td colspan="8">No leads yet.</td></tr>'; return; }
   for (const x of LEADS) {
     const tr = document.createElement("tr");
-    [x.created_at, x.name, x.email, x.phone, x.message, x.page_url].forEach((v) => tr.appendChild(cell(v)));
+    tr.appendChild(cell(x.created_at));
+    const pr = document.createElement("td"); const sp = document.createElement("span");
+    sp.className = "pill prio-" + (x.priority || "medium"); sp.textContent = x.priority || "—"; pr.appendChild(sp); tr.appendChild(pr);
+    [x.name, x.company, x.email, x.phone].forEach((v) => tr.appendChild(cell(v)));
+    const req = document.createElement("td");
+    if (x.summary) { const b = document.createElement("b"); b.textContent = x.summary; req.appendChild(b); req.appendChild(document.createElement("br")); }
+    req.appendChild(document.createTextNode(x.message || ""));
+    if (x.transcript) {
+      try {
+        const msgs = JSON.parse(x.transcript);
+        const d = document.createElement("details"); d.style.cssText = "padding:6px 0;border:0;margin:6px 0 0";
+        const sm = document.createElement("summary"); sm.textContent = "Chat (" + msgs.length + " messages)"; sm.style.fontWeight = "400"; d.appendChild(sm);
+        msgs.forEach((m) => { const pp = document.createElement("p"); pp.style.margin = "6px 0"; pp.textContent = (m.role === "user" ? "Visitor: " : "Assistant: ") + m.content; d.appendChild(pp); });
+        req.appendChild(d);
+      } catch (_) {}
+    }
+    tr.appendChild(req);
+    tr.appendChild(cell(x.page_url));
     tb.appendChild(tr);
   }
 }
@@ -137,10 +166,24 @@ $("reindex").addEventListener("click", async () => {
   finally { btn.disabled = false; btn.textContent = "Re-index website"; }
 });
 
+$("settings").addEventListener("input", (e) => {
+  if (e.target.name === "instructions") $("setCount").textContent = e.target.value.length + " / 6000";
+});
+$("settings").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = e.target; const btn = f.querySelector("button"); btn.disabled = true; $("setMsg").textContent = "Saving…";
+  try {
+    await api("/api/bots/" + encodeURIComponent(BOT) + "/settings", { method: "POST", body: JSON.stringify({
+      greeting: f.elements.namedItem("greeting").value, instructions: f.elements.namedItem("instructions").value }) });
+    $("setMsg").textContent = "Saved. New chats use these settings right away.";
+  } catch (ex) { $("setMsg").textContent = ex.message; }
+  finally { btn.disabled = false; }
+});
+
 $("csv").addEventListener("click", () => {
   const esc = (v) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
-  const rows = [["created_at", "name", "email", "phone", "message", "page_url"]]
-    .concat(LEADS.map((x) => [x.created_at, x.name, x.email, x.phone, x.message, x.page_url]));
+  const rows = [["created_at", "priority", "name", "company", "email", "phone", "summary", "message", "page_url"]]
+    .concat(LEADS.map((x) => [x.created_at, x.priority, x.name, x.company, x.email, x.phone, x.summary, x.message, x.page_url]));
   const blob = new Blob([rows.map((r) => r.map(esc).join(",")).join("\n")], { type: "text/csv" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "leads-" + BOT + ".csv"; a.click();
 });

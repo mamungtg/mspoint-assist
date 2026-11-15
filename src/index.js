@@ -1,6 +1,6 @@
 // MSPoint Assist — Worker entry point (API under /api/*, everything else is static assets).
 import { crawlSite } from "./crawl.js";
-import { answer, deleteBotVectors, indexBot, retrieve } from "./rag.js";
+import { MAX_INSTRUCTIONS, answer, deleteBotVectors, indexBot, qualifyLead, retrieve } from "./rag.js";
 import { DEMO_BOT, DEMO_KNOWLEDGE } from "./demo.js";
 import {
   CORS, HttpError, clip, isEmail, json, normalizeUrl, randomId, randomKey, safeEqual, sha256, today,
@@ -143,7 +143,7 @@ async function chat(request, env) {
   }
 
   const reply = await answer(env, {
-    businessName: bot.name, siteUrl: bot.site_url, context, history, question,
+    businessName: bot.name, siteUrl: bot.site_url, context, history, question, instructions: bot.instructions,
   });
   const unsure = /not sure|don't have|do not have|couldn't find|pass (your|the) question|leave your/i.test(reply);
   return json({ reply, sources, lead_prompt: unsure || !context });
@@ -162,10 +162,22 @@ async function createLead(request, env) {
   ).bind(bot.id).first();
   if ((recent?.n || 0) >= 20) throw new HttpError(429, "Too many submissions. Please try again later.");
 
+  const transcript = (Array.isArray(body.transcript) ? body.transcript : [])
+    .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+    .slice(-10)
+    .map((m) => ({ role: m.role, content: clip(m.content, 1000) }));
+  const lead = {
+    name: clip(body.name, 120), company: clip(body.company, 120), phone: clip(body.phone, 40),
+    message: clip(body.message, 2000), page_url: clip(body.page_url, 500),
+  };
+  const { priority, summary } = await qualifyLead(env, { businessName: bot.name, lead, transcript });
+
   await env.DB.prepare(
-    "INSERT INTO leads (bot_id, name, email, phone, message, page_url) VALUES (?, ?, ?, ?, ?, ?)",
+    `INSERT INTO leads (bot_id, name, email, phone, message, page_url, company, priority, summary, transcript)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
-    bot.id, clip(body.name, 120), email, clip(body.phone, 40), clip(body.message, 2000), clip(body.page_url, 500),
+    bot.id, lead.name, email, lead.phone, lead.message, lead.page_url,
+    lead.company, priority, summary, transcript.length ? JSON.stringify(transcript) : null,
   ).run();
   return json({ ok: true }, 201);
 }
@@ -182,14 +194,33 @@ async function ownerBot(request, env, id) {
     status: bot.status, status_detail: bot.status_detail, pages_indexed: bot.pages_indexed, chunks: bot.chunks,
     created_at: bot.created_at, updated_at: bot.updated_at, leads: leadCount?.n || 0,
     usage: usage.results || [],
+    instructions: bot.instructions || "", greeting: bot.greeting || "",
     embed_code: `<script src="${origin}/widget.js" data-bot="${bot.id}" async></script>`,
   });
+}
+
+async function updateSettings(request, env, id) {
+  await requireOwner(env, request, id);
+  const body = await readJson(request);
+  const instructions = typeof body.instructions === "string" ? body.instructions.trim() : null;
+  const greeting = typeof body.greeting === "string" ? clip(body.greeting, 300) : null;
+  if (instructions && instructions.length > MAX_INSTRUCTIONS) {
+    throw new HttpError(400, `Instructions are too long (max ${MAX_INSTRUCTIONS} characters).`);
+  }
+  await env.DB.prepare(
+    `UPDATE bots SET
+       instructions = COALESCE(?, instructions),
+       greeting = COALESCE(NULLIF(?, ''), greeting),
+       updated_at = datetime('now')
+     WHERE id = ?`,
+  ).bind(instructions, greeting, id).run();
+  return json({ ok: true });
 }
 
 async function ownerLeads(request, env, id) {
   await requireOwner(env, request, id);
   const rows = await env.DB.prepare(
-    "SELECT id, name, email, phone, message, page_url, created_at FROM leads WHERE bot_id = ? ORDER BY created_at DESC LIMIT 500",
+    "SELECT id, name, company, email, phone, message, priority, summary, transcript, page_url, created_at FROM leads WHERE bot_id = ? ORDER BY created_at DESC LIMIT 500",
   ).bind(id).all();
   return json({ leads: rows.results || [] });
 }
@@ -239,6 +270,7 @@ async function route(request, env, ctx) {
   if ((p = pathname.match(/^\/api\/bots\/([a-z0-9_]+)\/public$/)) && m === "GET") return botInfo(env, p[1]);
   if ((p = pathname.match(/^\/api\/bots\/([a-z0-9_]+)\/leads$/)) && m === "GET") return ownerLeads(request, env, p[1]);
   if ((p = pathname.match(/^\/api\/bots\/([a-z0-9_]+)\/reindex$/)) && m === "POST") return reindex(request, env, p[1]);
+  if ((p = pathname.match(/^\/api\/bots\/([a-z0-9_]+)\/settings$/)) && m === "POST") return updateSettings(request, env, p[1]);
   if ((p = pathname.match(/^\/api\/bots\/([a-z0-9_]+)$/))) {
     if (m === "GET") return ownerBot(request, env, p[1]);
     if (m === "DELETE") return deleteBot(request, env, p[1]);
