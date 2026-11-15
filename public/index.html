@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MSPoint Assist — AI support assistant for small business websites</title>
+  <meta name="description" content="MSPoint Assist reads your website and answers visitor questions 24/7, then captures leads for your team. One line of code. Built on Cloudflare.">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <meta property="og:title" content="MSPoint Assist — AI support assistant for your website">
+  <meta property="og:description" content="Answers visitor questions from your own website content and turns conversations into leads.">
+  <meta property="og:image" content="https://app.mspointbd.com/logo-192.png">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="/"><img src="/logo-192.png" alt="">MSPoint Assist</a>
+    <nav>
+      <a href="#how">How it works</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#faq">FAQ</a>
+      <a href="/dashboard">Dashboard</a>
+      <a class="btn" href="#create">Create free assistant</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="hero">
+  <div class="wrap">
+    <div>
+      <span class="badge">Free public beta · Runs on Cloudflare's global network</span>
+      <h1>An AI assistant that <span>knows your website</span> and turns visitors into leads.</h1>
+      <p class="lead">MSPoint Assist reads your public pages, answers customer questions 24/7 using only your own content, and collects contact details when a person is needed. Install it with one line of code.</p>
+      <div class="cta">
+        <a class="btn" href="#create">Create your assistant — free</a>
+        <a class="btn ghost" href="#demo" onclick="document.querySelector('#mspoint-assist')?.shadowRoot?.querySelector('.btn')?.click()">Try the live demo</a>
+      </div>
+      <p class="note">No credit card. Works with WordPress, Wix, Webflow, Shopify, Squarespace and plain HTML.</p>
+    </div>
+    <div class="mock" aria-hidden="true">
+      <div class="h"><span class="dot"></span> Acme Plumbing assistant</div>
+      <div class="row u">Do you do emergency callouts on weekends?</div>
+      <div class="row b">Yes — emergency callouts are available Saturday and Sunday, 8am–8pm, across the city. Would you like the team to call you back?</div>
+      <div class="row u">Yes please</div>
+      <div class="row b">Great! Leave your name and mail address and we'll get in touch shortly.</div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <h2>How it works</h2>
+    <p class="sub">From website address to a working assistant in about a minute.</p>
+    <div class="grid3">
+      <div class="card"><div class="num">1</div><h3>Enter your website</h3><p>We read your public pages (sitemap first) and build a private knowledge index for your business.</p></div>
+      <div class="card"><div class="num">2</div><h3>Paste one line of code</h3><p>Add the script tag to your site. A chat button appears in the corner, styled to fit.</p></div>
+      <div class="card"><div class="num">3</div><h3>Answer & capture leads</h3><p>Visitors get instant answers with source links. When they need a person, their details land in your dashboard.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <h2>Built for small teams</h2>
+    <p class="sub">Everything a small business needs from website chat, nothing it doesn't.</p>
+    <div class="grid3">
+      <div class="card"><div class="ico">🎯</div><h3>Grounded answers</h3><p>Replies come from your own pages, with links to the source. No made-up prices or policies.</p></div>
+      <div class="card"><div class="ico">📥</div><h3>Lead capture</h3><p>When the assistant isn't sure, it offers a short form. Leads are saved and exportable as CSV.</p></div>
+      <div class="card"><div class="ico">🌍</div><h3>Any language</h3><p>Visitors can ask in their own language and get a reply in the same language.</p></div>
+      <div class="card"><div class="ico">⚡</div><h3>Fast everywhere</h3><p>Runs on Cloudflare Workers, Workers AI, Vectorize and D1 — close to your visitors worldwide.</p></div>
+      <div class="card"><div class="ico">🔄</div><h3>One-click refresh</h3><p>Changed your services or prices? Re-index your site from the dashboard.</p></div>
+      <div class="card"><div class="ico">🔒</div><h3>Your data stays yours</h3><p>Only public pages are read. Chats aren't used to train models. Delete everything any time.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="demo">
+  <div class="wrap">
+    <h2>Try it right now</h2>
+    <p class="sub">The chat button in the bottom-right corner of this page is a live MSPoint Assist. Ask it about features, pricing or installation.</p>
+  </div>
+</section>
+
+<section id="create" class="alt">
+  <div class="wrap create">
+    <div>
+      <h2>Create your assistant</h2>
+      <p class="sub">Free during beta: 1 assistant, up to 12 pages, 100 messages a day.</p>
+      <form class="box" id="createForm">
+        <label>Business name<input name="name" required maxlength="80" placeholder="Acme Plumbing"></label>
+        <label>Website<input name="website" required maxlength="300" placeholder="acmeplumbing.com"></label>
+        <label>Your mail address<input name="email" type="email" required maxlength="200" placeholder="you@acmeplumbing.com"></label>
+        <button class="btn" type="submit" id="createBtn">Create assistant</button>
+        <p class="err hidden" id="createErr"></p>
+        <p class="note">By creating an assistant you agree that we read your public website pages to answer visitor questions.</p>
+      </form>
+    </div>
+    <div>
+      <div class="result hidden" id="result">
+        <h3>Your assistant is ready 🎉</h3>
+        <p id="resStatus"></p>
+        <p><b>1. Paste this before the closing &lt;/body&gt; tag of your site:</b></p>
+        <pre id="resEmbed"></pre>
+        <p><b>2. Save your owner key</b> <span class="warn">— shown only once. You need it to open your dashboard.</span></p>
+        <code id="resKey"></code>
+        <p style="margin-top:14px"><a class="btn" id="resDash" href="/dashboard">Open dashboard</a></p>
+      </div>
+      <div class="card" id="createInfo">
+        <h3>What happens next</h3>
+        <p>We read your website (usually 20–60 seconds), then show your install code and owner key. Keep this tab open while it works.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="pricing">
+  <div class="wrap">
+    <h2>Pricing</h2>
+    <p class="sub">Start free. Paid plans open after the beta.</p>
+    <div class="grid3">
+      <div class="card featured"><h3>Free <span class="tag">Beta</span></h3><div class="price">$0<small>/month</small></div>
+        <ul><li>1 assistant</li><li>Up to 12 pages indexed</li><li>100 messages per day</li><li>Lead capture & CSV export</li></ul>
+        <a class="btn" href="#create">Start free</a></div>
+      <div class="card"><h3>Starter</h3><div class="price">$19<small>/month</small></div>
+        <ul><li>3 assistants</li><li>50 pages each</li><li>2,000 messages per month</li><li>Mail alerts for new leads</li></ul>
+        <a class="btn ghost" href="mailto:support@mspointbd.com?subject=MSPoint%20Assist%20Starter">Join waitlist</a></div>
+      <div class="card"><h3>Pro</h3><div class="price">$49<small>/month</small></div>
+        <ul><li>10 assistants</li><li>200 pages each</li><li>10,000 messages per month</li><li>Custom branding & priority support</li></ul>
+        <a class="btn ghost" href="mailto:support@mspointbd.com?subject=MSPoint%20Assist%20Pro">Join waitlist</a></div>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <h2>Who builds MSPoint Assist</h2>
+    <div class="founder card">
+      <div class="av">MH</div>
+      <div>
+        <h3 style="margin:0">Mominul Hoque — Founder, MSPoint LLC</h3>
+        <p>Infrastructure and DevOps engineer working with Linux, Kubernetes, cloud and security. MSPoint Assist grew out of years of keeping small business websites running: owners kept asking for a way to answer the same customer questions without hiring support staff.</p>
+        <p style="margin-top:10px"><a href="https://www.linkedin.com/in/mdmhoque" target="_blank" rel="noopener">LinkedIn</a> · <a href="https://github.com/mamungtg" target="_blank" rel="noopener">GitHub</a> · <a href="mailto:support@mspointbd.com">support@mspointbd.com</a></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <h2>FAQ</h2>
+    <details><summary>Will the assistant make things up?</summary><p>It is instructed to answer only from your website content. When the answer isn't there, it says so and offers the contact form instead.</p></details>
+    <details><summary>Which websites does it work with?</summary><p>Any site where you can add a script tag: WordPress, Wix, Webflow, Shopify, Squarespace, Framer or custom HTML.</p></details>
+    <details><summary>Where are my leads?</summary><p>In your dashboard. Open it with your assistant ID and owner key, view leads and download them as CSV.</p></details>
+    <details><summary>What data do you store?</summary><p>The text of your public pages (to answer questions), the leads visitors choose to submit, and daily message counts. Chat messages are not stored or used for training.</p></details>
+    <details><summary>How do I remove it?</summary><p>Remove the script tag from your site, and delete the assistant from the dashboard to erase its data.</p></details>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© <span id="yr"></span> MSPoint LLC (USA). MSPoint Assist is a product of MSPoint LLC.</span>
+    <span><a href="https://mspointbd.com" target="_blank" rel="noopener">mspointbd.com</a> · <a href="mailto:support@mspointbd.com">support@mspointbd.com</a></span>
+  </div>
+</footer>
+
+<script>
+document.getElementById("yr").textContent = new Date().getFullYear();
+const form = document.getElementById("createForm");
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById("createBtn");
+  const err = document.getElementById("createErr");
+  err.classList.add("hidden");
+  btn.disabled = true;
+  btn.textContent = "Reading your website… (up to a minute)";
+  try {
+    const r = await fetch("/api/bots", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: form.elements.namedItem("name").value,
+        website: form.elements.namedItem("website").value,
+        email: form.elements.namedItem("email").value,
+      }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || "Something went wrong.");
+    document.getElementById("resEmbed").textContent = j.embed_code;
+    document.getElementById("resKey").textContent = j.owner_key;
+    document.getElementById("resDash").href = j.dashboard_url;
+    document.getElementById("resStatus").textContent = j.status === "ready"
+      ? `Indexed ${j.pages_indexed} page(s) from your website. Assistant ID: ${j.id}`
+      : `Your assistant was created (ID: ${j.id}) but indexing reported a problem: ${j.status_detail || "unknown"}. You can retry from the dashboard.`;
+    try { localStorage.setItem("msa_bot", j.id); } catch (_) {}
+    document.getElementById("result").classList.remove("hidden");
+    document.getElementById("createInfo").classList.add("hidden");
+    form.reset();
+  } catch (ex) {
+    err.textContent = ex.message;
+    err.classList.remove("hidden");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Create assistant";
+  }
+});
+</script>
+<script src="/widget.js" data-bot="demo" async></script>
+</body>
+</html>

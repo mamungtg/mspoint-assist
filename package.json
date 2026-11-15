@@ -1,0 +1,17 @@
+{
+  "name": "mspoint-assist",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MSPoint Assist — AI support agent for small business websites, built on Cloudflare Workers, Workers AI, Vectorize and D1.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "test": "node --test test/*.test.js",
+    "check": "wrangler deploy --dry-run --outdir dist",
+    "db:migrate": "wrangler d1 migrations apply DB --remote",
+    "deploy": "wrangler d1 migrations apply DB --remote && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.162.0"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mspoint-assist",
+  "main": "src/index.js",
+  "compatibility_date": "2026-06-01",
+  "observability": { "enabled": true },
+
+  // Landing page, dashboard and widget.js are static assets.
+  // Only /api/* runs the Worker first.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+
+  // Workers AI: embeddings (bge-base-en-v1.5) and chat answers (Llama 3.3 70B).
+  "ai": { "binding": "AI" },
+
+  // Bots, leads and usage counters.
+  // Create once:  npx wrangler d1 create mspoint-assist   -> paste the id below.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mspoint-assist",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // Website knowledge, one namespace per bot.
+  // Create once:  npx wrangler vectorize create mspoint-assist --dimensions=768 --metric=cosine
+  "vectorize": [
+    { "binding": "VECTORIZE", "index_name": "mspoint-assist" }
+  ],
+
+  "vars": {
+    "PRODUCT_NAME": "MSPoint Assist",
+    "FREE_DAILY_MESSAGES": "100",
+    "MAX_CRAWL_PAGES": "12"
+  },
+
+  // Custom domain (DNS for mspointbd.com is on this Cloudflare account).
+  "routes": [
+    { "pattern": "app.mspointbd.com", "custom_domain": true }
+  ]
+}

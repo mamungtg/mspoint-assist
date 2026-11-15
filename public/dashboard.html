@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard — MSPoint Assist</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="/"><img src="/logo-192.png" alt="">MSPoint Assist</a>
+    <nav><a href="/">Home</a><a href="#" id="logout" class="hidden">Sign out</a></nav>
+  </div>
+</header>
+
+<main class="wrap" style="padding:40px 22px 60px">
+  <form class="box" id="login" style="max-width:460px">
+    <h2 style="margin:0">Owner dashboard</h2>
+    <p class="note" style="margin:0">Use the assistant ID and owner key you received when you created your assistant.</p>
+    <label>Assistant ID<input name="bot" required placeholder="b1a2b3c4…"></label>
+    <label>Owner key<input name="key" type="password" required placeholder="msa_…" autocomplete="current-password"></label>
+    <label style="flex-direction:row;align-items:center;font-weight:400"><input type="checkbox" name="remember" style="width:auto"> Remember on this device</label>
+    <button class="btn" type="submit">Open dashboard</button>
+    <p class="err hidden" id="loginErr"></p>
+  </form>
+
+  <div id="app" class="hidden">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap">
+      <div>
+        <h2 style="margin:0" id="bName"></h2>
+        <a id="bSite" target="_blank" rel="noopener"></a> · <span class="pill" id="bStatus"></span>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn ghost" id="reindex">Re-index website</button>
+        <button class="btn ghost" id="csv">Export leads (CSV)</button>
+        <button class="btn ghost" id="del" style="color:#b91c1c !important">Delete assistant</button>
+      </div>
+    </div>
+    <p class="err hidden" id="appErr"></p>
+
+    <div class="stats">
+      <div class="stat"><b id="sPages">0</b><span>Pages indexed</span></div>
+      <div class="stat"><b id="sLeads">0</b><span>Leads</span></div>
+      <div class="stat"><b id="sToday">0</b><span>Messages today</span></div>
+      <div class="stat"><b id="s30">0</b><span>Messages (30 days)</span></div>
+    </div>
+
+    <h3>Install code</h3>
+    <p class="note">Paste before the closing &lt;/body&gt; tag of every page where the chat should appear.</p>
+    <pre id="embed" style="background:#0b1b2b;color:#e6edf3;padding:14px;border-radius:10px;white-space:pre-wrap;word-break:break-all"></pre>
+
+    <h3>Leads</h3>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>Date</th><th>Name</th><th>Mail</th><th>Phone</th><th>Message</th><th>Page</th></tr></thead>
+        <tbody id="leads"><tr><td colspan="6">No leads yet.</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let BOT = null, KEY = null, LEADS = [];
+
+function store() { try { return window.localStorage; } catch (_) { return null; } }
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { ...opts, headers: { authorization: "Bearer " + KEY, "content-type": "application/json", ...(opts.headers || {}) } });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || "Request failed (" + r.status + ")");
+  return j;
+}
+
+function cell(text) { const td = document.createElement("td"); td.textContent = text || ""; return td; }
+
+async function load() {
+  const b = await api("/api/bots/" + encodeURIComponent(BOT));
+  $("bName").textContent = b.name;
+  $("bSite").textContent = b.site_url; $("bSite").href = b.site_url;
+  $("bStatus").textContent = b.status; $("bStatus").className = "pill " + b.status;
+  if (b.status === "error" && b.status_detail) { $("appErr").textContent = b.status_detail; $("appErr").classList.remove("hidden"); }
+  $("sPages").textContent = b.pages_indexed;
+  $("sLeads").textContent = b.leads;
+  const day = new Date().toISOString().slice(0, 10);
+  $("sToday").textContent = (b.usage.find((u) => u.day === day) || {}).messages || 0;
+  $("s30").textContent = b.usage.reduce((a, u) => a + u.messages, 0);
+  $("embed").textContent = b.embed_code;
+
+  const l = await api("/api/bots/" + encodeURIComponent(BOT) + "/leads");
+  LEADS = l.leads;
+  const tb = $("leads"); tb.innerHTML = "";
+  if (!LEADS.length) { tb.innerHTML = '<tr><td colspan="6">No leads yet.</td></tr>'; return; }
+  for (const x of LEADS) {
+    const tr = document.createElement("tr");
+    [x.created_at, x.name, x.email, x.phone, x.message, x.page_url].forEach((v) => tr.appendChild(cell(v)));
+    tb.appendChild(tr);
+  }
+}
+
+async function openDash() {
+  $("login").classList.add("hidden");
+  $("app").classList.remove("hidden");
+  $("logout").classList.remove("hidden");
+  await load();
+}
+
+$("login").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  BOT = f.elements.namedItem("bot").value.trim();
+  KEY = f.elements.namedItem("key").value.trim();
+  try {
+    await openDash();
+    const s = store();
+    if (s && f.elements.namedItem("remember").checked) { s.setItem("msa_bot", BOT); s.setItem("msa_key", KEY); }
+  } catch (ex) {
+    $("app").classList.add("hidden"); $("login").classList.remove("hidden");
+    $("loginErr").textContent = ex.message; $("loginErr").classList.remove("hidden");
+  }
+});
+
+$("logout").addEventListener("click", (e) => {
+  e.preventDefault();
+  const s = store(); if (s) { s.removeItem("msa_key"); }
+  location.href = "/dashboard";
+});
+
+$("reindex").addEventListener("click", async () => {
+  const btn = $("reindex"); btn.disabled = true; btn.textContent = "Re-indexing… (up to a minute)";
+  try { await api("/api/bots/" + encodeURIComponent(BOT) + "/reindex", { method: "POST" }); await load(); }
+  catch (ex) { alert(ex.message); }
+  finally { btn.disabled = false; btn.textContent = "Re-index website"; }
+});
+
+$("csv").addEventListener("click", () => {
+  const esc = (v) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+  const rows = [["created_at", "name", "email", "phone", "message", "page_url"]]
+    .concat(LEADS.map((x) => [x.created_at, x.name, x.email, x.phone, x.message, x.page_url]));
+  const blob = new Blob([rows.map((r) => r.map(esc).join(",")).join("\n")], { type: "text/csv" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "leads-" + BOT + ".csv"; a.click();
+});
+
+$("del").addEventListener("click", async () => {
+  if (!confirm("Delete this assistant, its website index and all leads? This cannot be undone.")) return;
+  try { await api("/api/bots/" + encodeURIComponent(BOT), { method: "DELETE" }); const s = store(); if (s) { s.removeItem("msa_bot"); s.removeItem("msa_key"); } location.href = "/"; }
+  catch (ex) { alert(ex.message); }
+});
+
+(function init() {
+  const s = store();
+  const hashBot = location.hash.slice(1);
+  const savedBot = s && s.getItem("msa_bot");
+  const savedKey = s && s.getItem("msa_key");
+  const f = $("login");
+  if (hashBot || savedBot) f.elements.namedItem("bot").value = hashBot || savedBot;
+  if (savedKey && (!hashBot || hashBot === savedBot)) { BOT = f.elements.namedItem("bot").value; KEY = savedKey; openDash().catch(() => { $("app").classList.add("hidden"); f.classList.remove("hidden"); }); }
+})();
+</script>
+</body>
+</html>
