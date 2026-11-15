@@ -131,7 +131,7 @@ $("logout").addEventListener("click", (e) => {
 
 $("reindex").addEventListener("click", async () => {
   const btn = $("reindex"); btn.disabled = true; btn.textContent = "Re-indexing… (up to a minute)";
-  try { await api("/api/bots/" + encodeURIComponent(BOT) + "/reindex", { method: "POST" }); await load(); }
+  try { await api("/api/bots/" + encodeURIComponent(BOT) + "/reindex", { method: "POST" }); await load(); alert("Re-indexed. New content is searchable in about a minute."); }
   catch (ex) { alert(ex.message); }
   finally { btn.disabled = false; btn.textContent = "Re-index website"; }
 });

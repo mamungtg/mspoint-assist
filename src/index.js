@@ -207,13 +207,18 @@ async function reindex(request, env, id) {
 
 async function deleteBot(request, env, id) {
   const bot = await requireOwner(env, request, id);
-  await deleteBotVectors(env, id, bot.chunks || 0);
-  await env.DB.batch([
-    env.DB.prepare("DELETE FROM leads WHERE bot_id = ?").bind(id),
-    env.DB.prepare("DELETE FROM usage WHERE bot_id = ?").bind(id),
-    env.DB.prepare("DELETE FROM bots WHERE id = ?").bind(id),
-  ]);
-  return json({ ok: true });
+  const vectorError = await deleteBotVectors(env, id, bot.chunks || 0);
+  try {
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM leads WHERE bot_id = ?").bind(id),
+      env.DB.prepare("DELETE FROM usage WHERE bot_id = ?").bind(id),
+      env.DB.prepare("DELETE FROM bots WHERE id = ?").bind(id),
+    ]);
+  } catch (err) {
+    console.error("db delete failed", id, err);
+    throw new HttpError(500, "Could not delete the assistant: " + clip(String(err?.message || err), 200));
+  }
+  return json({ ok: true, vector_cleanup: vectorError ? "pending" : "done" });
 }
 
 // ---- Router -----------------------------------------------------------------

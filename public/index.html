@@ -192,7 +192,7 @@ form.addEventListener("submit", async (e) => {
     document.getElementById("resKey").textContent = j.owner_key;
     document.getElementById("resDash").href = j.dashboard_url;
     document.getElementById("resStatus").textContent = j.status === "ready"
-      ? `Indexed ${j.pages_indexed} page(s) from your website. Assistant ID: ${j.id}`
+      ? `Indexed ${j.pages_indexed} page(s) from your website. Assistant ID: ${j.id}. Answers become available in about a minute while the search index finishes updating.`
       : `Your assistant was created (ID: ${j.id}) but indexing reported a problem: ${j.status_detail || "unknown"}. You can retry from the dashboard.`;
     try { localStorage.setItem("msa_bot", j.id); } catch (_) {}
     document.getElementById("result").classList.remove("hidden");

@@ -48,10 +48,18 @@ export async function indexBot(env, botId, pages, previousChunkCount = 0) {
   return rows.length;
 }
 
+// Best effort: returns an error message instead of throwing, so account data
+// can still be removed from D1 if the vector index is temporarily unavailable.
 export async function deleteBotVectors(env, botId, chunkCount) {
   const ids = [];
   for (let i = 0; i < chunkCount; i++) ids.push(`${botId}:${i}`);
-  for (let i = 0; i < ids.length; i += 500) await env.VECTORIZE.deleteByIds(ids.slice(i, i + 500));
+  try {
+    for (let i = 0; i < ids.length; i += 100) await env.VECTORIZE.deleteByIds(ids.slice(i, i + 100));
+    return null;
+  } catch (err) {
+    console.error("vector delete failed", botId, err);
+    return String(err?.message || err);
+  }
 }
 
 export async function retrieve(env, botId, question, topK = 5) {
