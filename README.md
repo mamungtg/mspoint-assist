@@ -52,7 +52,7 @@ owner   ──► /api/bots ──► crawler ──► chunk ──► Workers 
 <script src="https://app.mspointbd.com/widget.js" data-bot="YOUR_ASSISTANT_ID" async></script>
 ```
 
-Optional attributes: `data-color="#0f766e"`, `data-open="true"`.
+Optional attributes: `data-color="#14508f"`, `data-open="true"`.
 
 ## Setup (one time)
 

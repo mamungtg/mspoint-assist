@@ -9,7 +9,7 @@
 
   var BOT = script.getAttribute("data-bot");
   var API = new URL(script.src).origin;
-  var COLOR = script.getAttribute("data-color") || "#0f766e";
+  var COLOR = script.getAttribute("data-color") || "#14508f";
   var OPEN = script.getAttribute("data-open") === "true";
   var history = [];
   var leadShown = false;
