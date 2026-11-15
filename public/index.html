@@ -93,9 +93,10 @@
         <label>Business name<input name="name" required maxlength="80" placeholder="Acme Plumbing"></label>
         <label>Website<input name="website" required maxlength="300" placeholder="acmeplumbing.com"></label>
         <label>Your mail address<input name="email" type="email" required maxlength="200" placeholder="you@acmeplumbing.com"></label>
+        <div id="ts"></div>
         <button class="btn" type="submit" id="createBtn">Create assistant</button>
         <p class="err hidden" id="createErr"></p>
-        <p class="note">By creating an assistant you agree that we read your public website pages to answer visitor questions.</p>
+        <p class="note">By creating an assistant you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>, and that we read your public website pages to answer visitor questions.</p>
       </form>
     </div>
     <div>
@@ -154,7 +155,7 @@
     <details><summary>Will the assistant make things up?</summary><p>It is instructed to answer only from your website content. When the answer isn't there, it says so and offers the contact form instead.</p></details>
     <details><summary>Which websites does it work with?</summary><p>Any site where you can add a script tag: WordPress, Wix, Webflow, Shopify, Squarespace, Framer or custom HTML.</p></details>
     <details><summary>Where are my leads?</summary><p>In your dashboard. Open it with your assistant ID and owner key, view leads and download them as CSV.</p></details>
-    <details><summary>What data do you store?</summary><p>The text of your public pages (to answer questions), the leads visitors choose to submit, and daily message counts. Chat messages are not stored or used for training.</p></details>
+    <details><summary>What data do you store?</summary><p>The text of your public pages (to answer questions), the leads visitors choose to submit (with the last few chat messages for context), and daily message counts. Other conversations are not logged, and nothing is used to train AI models. See the <a href="/privacy">Privacy Policy</a>.</p></details>
     <details><summary>How do I remove it?</summary><p>Remove the script tag from your site, and delete the assistant from the dashboard to erase its data.</p></details>
   </div>
 </section>
@@ -163,13 +164,21 @@
 <footer>
   <div class="wrap">
     <span>© <span id="yr"></span> MSPoint LLC (USA). MSPoint Assist is a product of MSPoint LLC.</span>
-    <span><a href="https://mspointbd.com" target="_blank" rel="noopener">mspointbd.com</a> · <a href="mailto:support@mspointbd.com">support@mspointbd.com</a></span>
+    <span><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="https://mspointbd.com" target="_blank" rel="noopener">mspointbd.com</a> · <a href="mailto:support@mspointbd.com">support@mspointbd.com</a></span>
   </div>
 </footer>
 
 <script>
 document.getElementById("yr").textContent = new Date().getFullYear();
 const form = document.getElementById("createForm");
+let tsWidget = null;
+fetch("/api/config").then((r) => r.json()).then((c) => {
+  if (!c.turnstile_site_key) return;
+  window.onTurnstileLoad = () => { tsWidget = turnstile.render("#ts", { sitekey: c.turnstile_site_key, theme: "light" }); };
+  const s = document.createElement("script");
+  s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad&render=explicit";
+  s.async = true; document.head.appendChild(s);
+}).catch(() => {});
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const btn = document.getElementById("createBtn");
@@ -185,6 +194,7 @@ form.addEventListener("submit", async (e) => {
         name: form.elements.namedItem("name").value,
         website: form.elements.namedItem("website").value,
         email: form.elements.namedItem("email").value,
+        turnstile: tsWidget !== null && window.turnstile ? turnstile.getResponse(tsWidget) : undefined,
       }),
     });
     const j = await r.json();
@@ -205,6 +215,7 @@ form.addEventListener("submit", async (e) => {
   } finally {
     btn.disabled = false;
     btn.textContent = "Create assistant";
+    if (tsWidget !== null && window.turnstile) turnstile.reset(tsWidget);
   }
 });
 </script>

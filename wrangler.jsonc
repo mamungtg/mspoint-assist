@@ -36,7 +36,10 @@
   "vars": {
     "PRODUCT_NAME": "MSPoint Assist",
     "FREE_DAILY_MESSAGES": "100",
-    "MAX_CRAWL_PAGES": "12"
+    "MAX_CRAWL_PAGES": "12",
+    // Public Turnstile site key. The matching secret is set in the dashboard as
+    // the encrypted variable TURNSTILE_SECRET; the check is enforced only when it exists.
+    "TURNSTILE_SITE_KEY": ""
   },
 
   // Custom domain (DNS for mspointbd.com is on this Cloudflare account).

@@ -111,7 +111,8 @@
       '<input name="company" maxlength="120" placeholder="Company (optional)">' +
       '<input name="phone" maxlength="40" placeholder="Phone (optional)">' +
       '<textarea name="message" rows="2" maxlength="2000" placeholder="How can we help?"></textarea>' +
-      '<button type="submit">Send details</button>';
+      '<button type="submit">Send details</button>' +
+      '<p style="font-size:11px;color:#6b7280">Your details are shared with this business so they can reply. <a href="' + API + '/privacy" target="_blank" rel="noopener" style="color:#6b7280">Privacy</a></p>';
     if (prefillEmail) f.elements.namedItem("email").value = prefillEmail;
     f.addEventListener("submit", function (e) {
       e.preventDefault();

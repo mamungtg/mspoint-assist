@@ -63,6 +63,19 @@ async function runIndexing(env, bot, maxPages) {
   }
 }
 
+// Cloudflare Turnstile check. Enforced only when TURNSTILE_SECRET is configured.
+async function verifyTurnstile(env, token, ip) {
+  if (!env.TURNSTILE_SECRET) return;
+  if (!token) throw new HttpError(400, "Please complete the security check.");
+  const form = new FormData();
+  form.append("secret", env.TURNSTILE_SECRET);
+  form.append("response", String(token).slice(0, 2048));
+  if (ip) form.append("remoteip", ip);
+  const r = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", body: form });
+  const j = await r.json().catch(() => ({}));
+  if (!j.success) throw new HttpError(400, "Security check failed. Please try again.");
+}
+
 // ---- Handlers ---------------------------------------------------------------
 
 async function createBot(request, env) {
@@ -72,6 +85,7 @@ async function createBot(request, env) {
   if (!name) throw new HttpError(400, "Business name is required.");
   if (!isEmail(email)) throw new HttpError(400, "Please enter a valid mail address.");
   const siteUrl = normalizeUrl(body.website);
+  await verifyTurnstile(env, body.turnstile, request.headers.get("cf-connecting-ip"));
 
   // Free beta: one assistant per owner mail address.
   const existing = await env.DB.prepare("SELECT COUNT(*) AS n FROM bots WHERE owner_email = ?").bind(email).first();
@@ -264,6 +278,9 @@ async function route(request, env, ctx) {
   if (m === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
 
   if (pathname === "/api/health") return json({ ok: true, service: env.PRODUCT_NAME || "MSPoint Assist" });
+  if (pathname === "/api/config" && m === "GET") {
+    return json({ turnstile_site_key: env.TURNSTILE_SECRET ? (env.TURNSTILE_SITE_KEY || null) : null }, 200, { "cache-control": "public, max-age=300" });
+  }
   if (pathname === "/api/bots" && m === "POST") return createBot(request, env);
   if (pathname === "/api/chat" && m === "POST") return chat(request, env);
   if (pathname === "/api/leads" && m === "POST") return createLead(request, env);
