@@ -39,7 +39,7 @@
     "MAX_CRAWL_PAGES": "12",
     // Public Turnstile site key. The matching secret is set in the dashboard as
     // the encrypted variable TURNSTILE_SECRET; the check is enforced only when it exists.
-    "TURNSTILE_SITE_KEY": ""
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAGCRbUVQXkDasE58"
   },
 
   // Custom domain (DNS for mspointbd.com is on this Cloudflare account).
