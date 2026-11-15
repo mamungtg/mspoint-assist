@@ -22,7 +22,7 @@
     {
       "binding": "DB",
       "database_name": "mspoint-assist",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "database_id": "e5b6a923-551d-4251-9659-fc4d9aa2cbd0",
       "migrations_dir": "migrations"
     }
   ],
