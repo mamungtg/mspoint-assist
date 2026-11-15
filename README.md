@@ -70,7 +70,7 @@ The Worker is connected to this repository with **Cloudflare Workers Builds**. E
 
 ```
 Build command:  npm test
-Deploy command: npx wrangler d1 migrations apply DB --remote && npx wrangler deploy
+Deploy command: npm run deploy:ci   (creates the Vectorize index if missing, applies D1 migrations, deploys)
 ```
 
 GitHub Actions (`.github/workflows/ci.yml`) runs the unit tests and a `wrangler deploy --dry-run` on every push and pull request.

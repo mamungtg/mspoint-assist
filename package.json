@@ -9,7 +9,9 @@
     "test": "node --test test/*.test.js",
     "check": "wrangler deploy --dry-run --outdir dist",
     "db:migrate": "wrangler d1 migrations apply DB --remote",
-    "deploy": "wrangler d1 migrations apply DB --remote && wrangler deploy"
+    "deploy": "wrangler d1 migrations apply DB --remote && wrangler deploy",
+    "vectorize:ensure": "wrangler vectorize get mspoint-assist >/dev/null 2>&1 || wrangler vectorize create mspoint-assist --dimensions=768 --metric=cosine",
+    "deploy:ci": "npm run vectorize:ensure && wrangler d1 migrations apply DB --remote && wrangler deploy"
   },
   "devDependencies": {
     "wrangler": "^4.162.0"
