@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Preview your assistant — MSPoint Assist</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <meta name="theme-color" content="#14508f">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="/"><img src="/logo-192.png" alt="">MSPoint Assist</a>
+    <nav><a href="/">Home</a><a href="/dashboard">Dashboard</a></nav>
+  </div>
+</header>
+
+<main class="wrap" style="padding:40px 22px 60px;max-width:820px">
+  <h2>Preview your assistant</h2>
+  <p class="sub">Test how your assistant answers before you put it on your website. The chat window opens in the bottom-right corner, exactly as visitors will see it.</p>
+
+  <form class="box" id="pick" style="max-width:520px">
+    <label>Assistant ID<input name="bot" required placeholder="b1a2b3c4…"></label>
+    <button class="btn" type="submit">Open preview</button>
+  </form>
+
+  <div class="card" id="active" style="display:none;margin-top:20px">
+    <h3 style="margin-top:0">Previewing <span id="botName"></span></h3>
+    <p>Try questions your customers ask, for example:</p>
+    <ul style="color:var(--muted)">
+      <li>What services do you offer?</li>
+      <li>How much does it cost?</li>
+      <li>Something your website does not cover — the assistant should say it is not sure and offer the contact form.</li>
+      <li>"Please contact me at name@example.com" — the lead form should open with the mail address filled in.</li>
+    </ul>
+    <p class="note">Leads you submit here are real and appear in your dashboard. Messages count toward your daily limit.</p>
+  </div>
+  <p class="err hidden" id="err"></p>
+</main>
+
+<script>
+(function () {
+  const id = decodeURIComponent(location.hash.slice(1)).trim();
+  const form = document.getElementById("pick");
+  if (id) form.elements.namedItem("bot").value = id;
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    location.hash = encodeURIComponent(form.elements.namedItem("bot").value.trim());
+    location.reload();
+  });
+  if (!id) return;
+  fetch("/api/bots/" + encodeURIComponent(id) + "/public")
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error("Assistant not found. Check the ID."))))
+    .then((b) => {
+      document.getElementById("botName").textContent = b.name;
+      document.getElementById("active").style.display = "block";
+      const s = document.createElement("script");
+      s.src = "/widget.js";
+      s.async = true;
+      s.setAttribute("data-bot", id);
+      s.setAttribute("data-open", "true");
+      document.body.appendChild(s);
+    })
+    .catch((ex) => {
+      const el = document.getElementById("err");
+      el.textContent = ex.message;
+      el.classList.remove("hidden");
+    });
+})();
+</script>
+</body>
+</html>

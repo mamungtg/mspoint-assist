@@ -35,6 +35,7 @@
         <a id="bSite" target="_blank" rel="noopener"></a> · <span class="pill" id="bStatus"></span>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <a class="btn" id="preview" href="/try" target="_blank" rel="noopener">Preview chat</a>
         <button class="btn ghost" id="reindex">Re-index website</button>
         <button class="btn ghost" id="csv">Export leads (CSV)</button>
         <button class="btn ghost" id="del" style="color:#b91c1c !important">Delete assistant</button>
@@ -55,6 +56,7 @@
 
     <h3>Assistant settings</h3>
     <form class="box" id="settings" style="margin-bottom:28px">
+      <label>Assistant name <span class="note" style="font-weight:400">— shown at the top of the chat window</span><input name="name" maxlength="80" required></label>
       <label>Greeting message<input name="greeting" maxlength="300" placeholder="Hi! How can I help you today?"></label>
       <label>Custom instructions <span class="note" style="font-weight:400">— role, tone, services to focus on, what to ask visitors. Facts still come only from your website.</span>
         <textarea name="instructions" rows="12" maxlength="6000" placeholder="You are the assistant for … Focus on … Ask visitors about …"></textarea></label>
@@ -99,7 +101,9 @@ async function load() {
   $("s30").textContent = b.usage.reduce((a, u) => a + u.messages, 0);
   $("embed").textContent = b.embed_code;
   const sf = $("settings");
+  sf.elements.namedItem("name").value = b.name || "";
   sf.elements.namedItem("greeting").value = b.greeting || "";
+  $("preview").href = "/try#" + encodeURIComponent(b.id);
   sf.elements.namedItem("instructions").value = b.instructions || "";
   $("setCount").textContent = (b.instructions || "").length + " / 6000";
 
@@ -174,8 +178,10 @@ $("settings").addEventListener("submit", async (e) => {
   const f = e.target; const btn = f.querySelector("button"); btn.disabled = true; $("setMsg").textContent = "Saving…";
   try {
     await api("/api/bots/" + encodeURIComponent(BOT) + "/settings", { method: "POST", body: JSON.stringify({
+      name: f.elements.namedItem("name").value,
       greeting: f.elements.namedItem("greeting").value, instructions: f.elements.namedItem("instructions").value }) });
-    $("setMsg").textContent = "Saved. New chats use these settings right away.";
+    $("bName").textContent = f.elements.namedItem("name").value;
+    $("setMsg").textContent = "Saved. New chats use these settings right away — try them in Preview.";
   } catch (ex) { $("setMsg").textContent = ex.message; }
   finally { btn.disabled = false; }
 });

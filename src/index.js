@@ -204,6 +204,7 @@ async function updateSettings(request, env, id) {
   const body = await readJson(request);
   const instructions = typeof body.instructions === "string" ? body.instructions.trim() : null;
   const greeting = typeof body.greeting === "string" ? clip(body.greeting, 300) : null;
+  const name = typeof body.name === "string" ? clip(body.name, 80) : null;
   if (instructions && instructions.length > MAX_INSTRUCTIONS) {
     throw new HttpError(400, `Instructions are too long (max ${MAX_INSTRUCTIONS} characters).`);
   }
@@ -211,9 +212,10 @@ async function updateSettings(request, env, id) {
     `UPDATE bots SET
        instructions = COALESCE(?, instructions),
        greeting = COALESCE(NULLIF(?, ''), greeting),
+       name = COALESCE(NULLIF(?, ''), name),
        updated_at = datetime('now')
      WHERE id = ?`,
-  ).bind(instructions, greeting, id).run();
+  ).bind(instructions, greeting, name, id).run();
   return json({ ok: true });
 }
 
