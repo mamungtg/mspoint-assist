@@ -73,7 +73,15 @@ async function verifyTurnstile(env, token, ip) {
   if (ip) form.append("remoteip", ip);
   const r = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", body: form });
   const j = await r.json().catch(() => ({}));
-  if (!j.success) throw new HttpError(400, "Security check failed. Please try again.");
+  if (!j.success) {
+    const codes = Array.isArray(j["error-codes"]) ? j["error-codes"] : [];
+    console.error("turnstile siteverify failed", JSON.stringify(codes));
+    if (codes.includes("invalid-input-secret") || codes.includes("missing-input-secret")) {
+      // Our configuration is wrong, not the visitor: say so instead of blaming them.
+      throw new HttpError(503, "Signup is temporarily unavailable (security check misconfigured). Please contact support@mspointbd.com.");
+    }
+    throw new HttpError(400, "Security check failed. Please try again.");
+  }
 }
 
 // ---- Handlers ---------------------------------------------------------------
