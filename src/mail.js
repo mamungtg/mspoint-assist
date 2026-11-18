@@ -1,19 +1,26 @@
-// Transactional mail through Zoho ZeptoMail's HTTP API.
+// Transactional mail. Uses Zoho ZeptoMail's HTTP API when ZEPTOMAIL_TOKEN is set,
+// otherwise Zoho Mail SMTP when SMTP_USER + SMTP_PASSWORD are set.
+import { smtpSend } from "./smtp.js";
+
 // Configure: secret ZEPTOMAIL_TOKEN (the "Send Mail token" of a ZeptoMail Mail Agent),
 // var MAIL_FROM (an address on the verified sending domain), optional ZEPTOMAIL_API_URL.
 // Without a token, mail is skipped (logged), so the app keeps working.
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
+function useZepto(env) { return Boolean(env.ZEPTOMAIL_TOKEN && env.MAIL_FROM); }
+function useSmtp(env) { return Boolean(env.SMTP_USER && env.SMTP_PASSWORD); }
+
 export function mailEnabled(env) {
-  return Boolean(env.ZEPTOMAIL_TOKEN && env.MAIL_FROM);
+  return useZepto(env) || useSmtp(env);
 }
 
 export async function sendMail(env, { to, toName, subject, html, text, replyTo }) {
   if (!mailEnabled(env)) {
-    console.log("mail skipped (ZeptoMail not configured)", subject);
+    console.log("mail skipped (no mail provider configured)", subject);
     return { skipped: true };
   }
+  if (!useZepto(env)) return smtpSend(env, { to, subject, html, text, replyTo });
   const token = String(env.ZEPTOMAIL_TOKEN).replace(/^Zoho-enczapikey\s+/i, "");
   const body = {
     from: { address: env.MAIL_FROM, name: env.MAIL_FROM_NAME || "MSPoint Assist" },

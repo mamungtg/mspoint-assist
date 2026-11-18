@@ -38,8 +38,11 @@
     "FREE_DAILY_MESSAGES": "100",
     "MAX_CRAWL_PAGES": "12",
     "VISITOR_HOURLY_MESSAGES": "30",
-    // Transactional mail (Zoho ZeptoMail). Secret ZEPTOMAIL_TOKEN is set in the dashboard.
+    // Transactional mail. Either Zoho ZeptoMail (secret ZEPTOMAIL_TOKEN, uses MAIL_FROM)
+    // or Zoho Mail SMTP (SMTP_USER here + secret SMTP_PASSWORD = Zoho app password).
     "MAIL_FROM": "noreply@notify.mspointbd.com",
+    "SMTP_HOST": "smtp.zoho.com",
+    "SMTP_PORT": "465",
     "MAIL_FROM_NAME": "MSPoint Assist",
     "DEMO_LEAD_MAIL": "support@mspointbd.com",
     // Public Turnstile site key. The matching secret is set in the dashboard as
