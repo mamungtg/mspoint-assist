@@ -113,6 +113,7 @@ async function load() {
   $("bSite").textContent = b.site_url; $("bSite").href = b.site_url;
   $("bStatus").textContent = b.status; $("bStatus").className = "pill " + b.status;
   if (b.status === "error" && b.status_detail) { $("appErr").textContent = b.status_detail; $("appErr").classList.remove("hidden"); }
+  if (b.suspended) { $("appErr").textContent = "This assistant is suspended, so the chat widget is hidden on your website. Please contact support@mspointbd.com."; $("appErr").classList.remove("hidden"); }
   $("sPages").textContent = b.pages_indexed;
   $("sLeads").textContent = b.leads;
   const day = new Date().toISOString().slice(0, 10);

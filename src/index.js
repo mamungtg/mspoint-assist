@@ -23,6 +23,16 @@ async function getBot(env, id) {
   return env.DB.prepare("SELECT * FROM bots WHERE id = ?").bind(id).first();
 }
 
+// Public endpoints (widget, chat, leads) ignore suspended assistants.
+async function getActiveBot(env, id) {
+  const bot = await getBot(env, id);
+  return bot && !bot.suspended ? bot : null;
+}
+
+const maxPagesFor = (env, bot) => Number(bot?.max_pages || env.MAX_CRAWL_PAGES || 12);
+const dailyLimitFor = (env, bot) =>
+  bot?.daily_limit != null ? Number(bot.daily_limit) : Number(env.FREE_DAILY_MESSAGES || 100) * (bot?.id === DEMO_BOT.id ? 10 : 1);
+
 function bearer(request) {
   const auth = request.headers.get("authorization") || "";
   return auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
@@ -128,7 +138,7 @@ async function createBot(request, env, ctx) {
 
   // Index while the client waits (usually 15-60 s). Running inside the request
   // avoids the 30 s limit that applies to background work after a response.
-  await runIndexing(env, { id, site_url: siteUrl, chunks: 0 }, Number(env.MAX_CRAWL_PAGES || 12));
+  await runIndexing(env, { id, site_url: siteUrl, chunks: 0 }, maxPagesFor(env, null));
   const done = await getBot(env, id);
 
   const origin = new URL(request.url).origin;
@@ -146,14 +156,14 @@ async function createBot(request, env, ctx) {
 }
 
 async function botInfo(env, id) {
-  const bot = await getBot(env, id);
+  const bot = await getActiveBot(env, id);
   if (!bot) throw new HttpError(404, "Assistant not found.");
   return json(publicBot(bot), 200, { "cache-control": "public, max-age=30" });
 }
 
 async function chat(request, env, ctx) {
   const body = await readJson(request);
-  const bot = await getBot(env, String(body.bot || ""));
+  const bot = await getActiveBot(env, String(body.bot || ""));
   if (!bot) throw new HttpError(404, "Assistant not found.");
   if (bot.status !== "ready") {
     return json({ reply: "I'm still learning this website. Please try again in a minute, or leave your details and the team will get back to you.", lead_prompt: true });
@@ -179,7 +189,7 @@ async function chat(request, env, ctx) {
   }
 
   // Daily quota per assistant (free beta).
-  const limit = Number(env.FREE_DAILY_MESSAGES || 100) * (bot.id === DEMO_BOT.id ? 10 : 1);
+  const limit = dailyLimitFor(env, bot);
   const day = today();
   const row = await env.DB.prepare(
     `INSERT INTO usage (bot_id, day, messages) VALUES (?, ?, 1)
@@ -209,7 +219,7 @@ async function chat(request, env, ctx) {
 
 async function createLead(request, env, ctx) {
   const body = await readJson(request);
-  const bot = await getBot(env, String(body.bot || ""));
+  const bot = await getActiveBot(env, String(body.bot || ""));
   if (!bot) throw new HttpError(404, "Assistant not found.");
   const email = clip(body.email, 200);
   if (!isEmail(email)) throw new HttpError(400, "Please enter a valid mail address.");
@@ -262,6 +272,7 @@ async function ownerBot(request, env, id) {
     instructions: bot.instructions || "", greeting: bot.greeting || "",
     priority_urls: (() => { try { return JSON.parse(bot.priority_urls || "[]"); } catch { return []; } })(),
     is_demo: bot.id === DEMO_BOT.id,
+    suspended: Boolean(bot.suspended),
     embed_code: `<script src="${origin}/widget.js" data-bot="${bot.id}" async></script>`,
   });
 }
@@ -303,18 +314,20 @@ async function reindex(request, env, id) {
     throw new HttpError(409, "Indexing is already running. Please wait a few minutes.");
   }
   await env.DB.prepare("UPDATE bots SET status='indexing', updated_at=datetime('now') WHERE id=?").bind(id).run();
-  await runIndexing(env, bot, Number(env.MAX_CRAWL_PAGES || 12));
+  await runIndexing(env, bot, maxPagesFor(env, bot));
   const done = await getBot(env, id);
   return json({ ok: true, status: done.status, status_detail: done.status_detail, pages_indexed: done.pages_indexed });
 }
 
-async function deleteBot(request, env, id) {
-  const bot = await requireOwner(env, request, id);
+async function deleteBotData(env, bot) {
+  const id = bot.id;
   const vectorError = await deleteBotVectors(env, id, bot.chunks || 0);
   try {
     await env.DB.batch([
       env.DB.prepare("DELETE FROM leads WHERE bot_id = ?").bind(id),
       env.DB.prepare("DELETE FROM usage WHERE bot_id = ?").bind(id),
+      env.DB.prepare("DELETE FROM visitor_usage WHERE bot_id = ?").bind(id),
+      env.DB.prepare("DELETE FROM login_tokens WHERE bot_id = ?").bind(id),
       env.DB.prepare("DELETE FROM bots WHERE id = ?").bind(id),
     ]);
   } catch (err) {
@@ -322,6 +335,11 @@ async function deleteBot(request, env, id) {
     throw new HttpError(500, "Could not delete the assistant: " + clip(String(err?.message || err), 200));
   }
   return json({ ok: true, vector_cleanup: vectorError ? "pending" : "done" });
+}
+
+async function deleteBot(request, env, id) {
+  const bot = await requireOwner(env, request, id);
+  return deleteBotData(env, bot);
 }
 
 // ---- Mail sign-in (owner key recovery) ----------------------------------------
@@ -342,18 +360,26 @@ async function requestLogin(request, env) {
   const list = bots.results || [];
   if (!list.length) return generic;
 
-  const origin = new URL(request.url).origin;
+  await mailLoginLinks(env, new URL(request.url).origin, email, list);
+  return generic;
+}
+
+async function mailLoginLinks(env, origin, email, bots) {
   const expires = new Date(Date.now() + 30 * 60_000).toISOString();
   const links = [];
-  for (const b of list) {
+  for (const b of bots) {
     const token = randomKey().replace(/^msa_/, "");
     await env.DB.prepare("INSERT INTO login_tokens (token_hash, email, bot_id, expires_at) VALUES (?, ?, ?, ?)")
       .bind(await sha256(token), email, b.id, expires).run();
     links.push({ name: b.name, url: `${origin}/dashboard#login=${token}` });
   }
-  await sendMail(env, { to: email, ...loginMail({ links }) });
+  try {
+    await sendMail(env, { to: email, ...loginMail({ links }) });
+  } catch (err) {
+    console.error("login mail failed", err);
+    throw new HttpError(502, "Could not send the sign-in mail right now: " + clip(String(err?.message || err), 160));
+  }
   await env.DB.prepare("DELETE FROM login_tokens WHERE expires_at < ?").bind(new Date(Date.now() - 86400_000).toISOString()).run();
-  return generic;
 }
 
 async function verifyLogin(request, env) {
@@ -367,6 +393,203 @@ async function verifyLogin(request, env) {
   const key = randomKey();
   await env.DB.prepare("UPDATE bots SET key_hash = ?, updated_at = datetime('now') WHERE id = ?").bind(await sha256(key), row.bot_id).run();
   return json({ bot_id: row.bot_id, owner_key: key });
+}
+
+// ---- Admin (ADMIN_KEY) --------------------------------------------------------
+
+async function requireAdmin(env, request) {
+  if (!env.ADMIN_KEY) throw new HttpError(503, "Admin access is not configured (ADMIN_KEY secret missing).");
+  const ip = request.headers.get("cf-connecting-ip") || "unknown";
+  const visitor = (await sha256("admin-fail|" + ip)).slice(0, 32);
+  const hour = hourKey();
+  const fails = await env.DB.prepare(
+    "SELECT messages FROM visitor_usage WHERE bot_id = '__admin__' AND visitor = ? AND hour = ?",
+  ).bind(visitor, hour).first();
+  if ((fails?.messages || 0) >= 20) throw new HttpError(429, "Too many failed attempts. Try again in an hour.");
+  const key = bearer(request);
+  if (!key || !safeEqual(await sha256(key), await sha256(env.ADMIN_KEY))) {
+    await env.DB.prepare(
+      `INSERT INTO visitor_usage (bot_id, visitor, hour, messages) VALUES ('__admin__', ?, ?, 1)
+       ON CONFLICT (bot_id, visitor, hour) DO UPDATE SET messages = messages + 1`,
+    ).bind(visitor, hour).run();
+    throw new HttpError(401, "Invalid admin key.");
+  }
+}
+
+async function adminOverview(env) {
+  const bots = await env.DB.prepare(
+    `SELECT COUNT(*) AS total,
+       COALESCE(SUM(status = 'ready'), 0) AS ready, COALESCE(SUM(status = 'error'), 0) AS errors,
+       COALESCE(SUM(status = 'indexing'), 0) AS indexing, COALESCE(SUM(suspended), 0) AS suspended,
+       COALESCE(SUM(created_at > datetime('now', '-7 days')), 0) AS new7
+     FROM bots`,
+  ).first();
+  const leads = await env.DB.prepare(
+    `SELECT COUNT(*) AS total, COALESCE(SUM(created_at > datetime('now', '-7 days')), 0) AS last7,
+       COALESCE(SUM(priority = 'high' AND created_at > datetime('now', '-7 days')), 0) AS high7
+     FROM leads`,
+  ).first();
+  const msgs = await env.DB.prepare(
+    `SELECT COALESCE(SUM(CASE WHEN day = ? THEN messages END), 0) AS today,
+       COALESCE(SUM(CASE WHEN day >= date('now', '-30 days') THEN messages END), 0) AS last30
+     FROM usage`,
+  ).bind(today()).first();
+  const series = await env.DB.prepare(
+    "SELECT day, SUM(messages) AS messages FROM usage WHERE day >= date('now', '-13 days') GROUP BY day ORDER BY day",
+  ).all();
+  const signups = await env.DB.prepare(
+    "SELECT date(created_at) AS day, COUNT(*) AS n FROM bots WHERE created_at >= date('now', '-13 days') GROUP BY day ORDER BY day",
+  ).all();
+  return json({
+    bots, leads, messages: msgs, series: series.results || [], signups: signups.results || [],
+    config: {
+      mail: mailEnabled(env) ? (env.ZEPTOMAIL_TOKEN ? "ZeptoMail" : "Zoho SMTP") : "off",
+      turnstile: Boolean(env.TURNSTILE_SECRET), free_daily_messages: Number(env.FREE_DAILY_MESSAGES || 100),
+      max_crawl_pages: Number(env.MAX_CRAWL_PAGES || 12), visitor_hourly_messages: Number(env.VISITOR_HOURLY_MESSAGES || 30),
+    },
+  });
+}
+
+async function adminBots(env) {
+  const rows = await env.DB.prepare(
+    `SELECT b.id, b.name, b.site_url, b.owner_email, b.plan, b.status, b.status_detail, b.pages_indexed, b.chunks,
+       b.suspended, b.daily_limit, b.max_pages, b.admin_note, b.created_at, b.updated_at,
+       (SELECT COUNT(*) FROM leads l WHERE l.bot_id = b.id) AS leads,
+       (SELECT COALESCE(SUM(messages), 0) FROM usage u WHERE u.bot_id = b.id AND u.day >= date('now', '-30 days')) AS msgs30,
+       (SELECT COALESCE(SUM(messages), 0) FROM usage u WHERE u.bot_id = b.id AND u.day = ?) AS msgs_today
+     FROM bots b ORDER BY b.created_at DESC LIMIT 2000`,
+  ).bind(today()).all();
+  const demo = await env.DB.prepare(
+    `SELECT (SELECT COUNT(*) FROM leads WHERE bot_id = 'demo') AS leads,
+       (SELECT COALESCE(SUM(messages), 0) FROM usage WHERE bot_id = 'demo' AND day >= date('now', '-30 days')) AS msgs30`,
+  ).first();
+  return json({ bots: rows.results || [], demo });
+}
+
+async function adminBotDetail(env, id) {
+  const bot = await getBot(env, id);
+  if (!bot || id === DEMO_BOT.id) throw new HttpError(404, "Assistant not found.");
+  const { key_hash, ...safe } = bot;
+  const leads = await env.DB.prepare(
+    "SELECT id, name, company, email, phone, message, priority, summary, transcript, page_url, created_at FROM leads WHERE bot_id = ? ORDER BY created_at DESC LIMIT 300",
+  ).bind(id).all();
+  const usage = await env.DB.prepare("SELECT day, messages FROM usage WHERE bot_id = ? ORDER BY day DESC LIMIT 30").bind(id).all();
+  let priority = [];
+  try { priority = JSON.parse(bot.priority_urls || "[]"); } catch { priority = []; }
+  return json({
+    ...safe, priority_urls: priority, suspended: Boolean(bot.suspended),
+    effective_daily_limit: dailyLimitFor(env, bot), effective_max_pages: maxPagesFor(env, bot),
+    leads: leads.results || [], usage: usage.results || [],
+  });
+}
+
+const PLANS = ["free", "starter", "pro", "internal"];
+
+async function adminUpdateBot(request, env, id) {
+  const bot = await getBot(env, id);
+  if (!bot || id === DEMO_BOT.id) throw new HttpError(404, "Assistant not found.");
+  const b = await readJson(request);
+  const sets = [];
+  const vals = [];
+  const set = (col, v) => { sets.push(`${col} = ?`); vals.push(v); };
+  const intOrNull = (v, min, max, label) => {
+    if (v === null || v === "") return null;
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < min || n > max) throw new HttpError(400, `${label} must be a whole number from ${min} to ${max}.`);
+    return n;
+  };
+  if (b.suspended !== undefined) set("suspended", b.suspended ? 1 : 0);
+  if (b.plan !== undefined) {
+    if (!PLANS.includes(b.plan)) throw new HttpError(400, "Unknown plan.");
+    set("plan", b.plan);
+  }
+  if (b.daily_limit !== undefined) set("daily_limit", intOrNull(b.daily_limit, 0, 1_000_000, "Daily message limit"));
+  if (b.max_pages !== undefined) set("max_pages", intOrNull(b.max_pages, 1, 200, "Max pages"));
+  if (b.admin_note !== undefined) set("admin_note", clip(b.admin_note, 2000));
+  if (typeof b.name === "string" && b.name.trim()) set("name", clip(b.name, 80));
+  if (typeof b.greeting === "string" && b.greeting.trim()) set("greeting", clip(b.greeting, 300));
+  if (typeof b.instructions === "string") {
+    if (b.instructions.length > MAX_INSTRUCTIONS) throw new HttpError(400, `Instructions are too long (max ${MAX_INSTRUCTIONS}).`);
+    set("instructions", b.instructions.trim());
+  }
+  if (b.priority_urls !== undefined) set("priority_urls", JSON.stringify(parsePriorityUrls(b.priority_urls, bot.site_url)));
+  if (typeof b.owner_email === "string") {
+    const e = clip(b.owner_email, 200).toLowerCase();
+    if (!isEmail(e)) throw new HttpError(400, "Owner mail is not valid.");
+    set("owner_email", e);
+  }
+  if (!sets.length) throw new HttpError(400, "Nothing to update.");
+  sets.push("updated_at = datetime('now')");
+  await env.DB.prepare(`UPDATE bots SET ${sets.join(", ")} WHERE id = ?`).bind(...vals, id).run();
+  return json({ ok: true });
+}
+
+async function adminReindex(env, id) {
+  const bot = await getBot(env, id);
+  if (!bot || id === DEMO_BOT.id) throw new HttpError(404, "Assistant not found.");
+  await env.DB.prepare("UPDATE bots SET status='indexing', updated_at=datetime('now') WHERE id=?").bind(id).run();
+  await runIndexing(env, bot, maxPagesFor(env, bot));
+  const done = await getBot(env, id);
+  return json({ ok: true, status: done.status, status_detail: done.status_detail, pages_indexed: done.pages_indexed });
+}
+
+async function adminResetKey(env, id) {
+  const bot = await getBot(env, id);
+  if (!bot || id === DEMO_BOT.id) throw new HttpError(404, "Assistant not found.");
+  const key = randomKey();
+  await env.DB.prepare("UPDATE bots SET key_hash = ?, updated_at = datetime('now') WHERE id = ?").bind(await sha256(key), id).run();
+  return json({ ok: true, owner_key: key });
+}
+
+async function adminSendLogin(request, env, id) {
+  const bot = await getBot(env, id);
+  if (!bot || id === DEMO_BOT.id) throw new HttpError(404, "Assistant not found.");
+  if (!mailEnabled(env)) throw new HttpError(503, "Mail is not configured.");
+  await mailLoginLinks(env, new URL(request.url).origin, bot.owner_email, [bot]);
+  return json({ ok: true, sent_to: bot.owner_email });
+}
+
+async function adminDeleteBot(env, id) {
+  const bot = await getBot(env, id);
+  if (!bot || id === DEMO_BOT.id) throw new HttpError(404, "Assistant not found.");
+  return deleteBotData(env, bot);
+}
+
+async function adminLeads(env, url) {
+  const priority = url.searchParams.get("priority");
+  const where = ["high", "medium", "low"].includes(priority) ? "WHERE l.priority = ?" : "";
+  const stmt = env.DB.prepare(
+    `SELECT l.id, l.bot_id, COALESCE(b.name, CASE WHEN l.bot_id = 'demo' THEN 'Demo (landing page)' END) AS bot_name,
+       l.name, l.company, l.email, l.phone, l.message, l.priority, l.summary, l.page_url, l.created_at
+     FROM leads l LEFT JOIN bots b ON b.id = l.bot_id ${where}
+     ORDER BY l.created_at DESC LIMIT 1000`,
+  );
+  const rows = await (where ? stmt.bind(priority) : stmt).all();
+  return json({ leads: rows.results || [] });
+}
+
+async function adminDeleteLead(env, leadId) {
+  await env.DB.prepare("DELETE FROM leads WHERE id = ?").bind(Number(leadId)).run();
+  return json({ ok: true });
+}
+
+async function adminRoute(request, env, url, m) {
+  await requireAdmin(env, request);
+  const { pathname } = url;
+  let p;
+  if (pathname === "/api/admin/overview" && m === "GET") return adminOverview(env);
+  if (pathname === "/api/admin/bots" && m === "GET") return adminBots(env);
+  if (pathname === "/api/admin/leads" && m === "GET") return adminLeads(env, url);
+  if ((p = pathname.match(/^\/api\/admin\/leads\/(\d+)$/)) && m === "DELETE") return adminDeleteLead(env, p[1]);
+  if ((p = pathname.match(/^\/api\/admin\/bots\/([a-z0-9_]+)\/reindex$/)) && m === "POST") return adminReindex(env, p[1]);
+  if ((p = pathname.match(/^\/api\/admin\/bots\/([a-z0-9_]+)\/reset-key$/)) && m === "POST") return adminResetKey(env, p[1]);
+  if ((p = pathname.match(/^\/api\/admin\/bots\/([a-z0-9_]+)\/send-login$/)) && m === "POST") return adminSendLogin(request, env, p[1]);
+  if ((p = pathname.match(/^\/api\/admin\/bots\/([a-z0-9_]+)$/))) {
+    if (m === "GET") return adminBotDetail(env, p[1]);
+    if (m === "POST") return adminUpdateBot(request, env, p[1]);
+    if (m === "DELETE") return adminDeleteBot(env, p[1]);
+  }
+  throw new HttpError(404, "Not found.");
 }
 
 // ---- Router -----------------------------------------------------------------
@@ -387,6 +610,7 @@ async function route(request, env, ctx) {
   if (pathname === "/api/leads" && m === "POST") return createLead(request, env, ctx);
   if (pathname === "/api/auth/request" && m === "POST") return requestLogin(request, env);
   if (pathname === "/api/auth/verify" && m === "POST") return verifyLogin(request, env);
+  if (pathname.startsWith("/api/admin/")) return adminRoute(request, env, url, m);
 
   let p;
   if ((p = pathname.match(/^\/api\/bots\/([a-z0-9_]+)\/public$/)) && m === "GET") return botInfo(env, p[1]);

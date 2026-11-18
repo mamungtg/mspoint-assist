@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin — MSPoint Assist</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <meta name="theme-color" content="#14508f">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    .tabs { display: flex; gap: 6px; margin: 18px 0 22px; border-bottom: 1px solid var(--line); }
+    .tabs button { background: none; border: 0; padding: 10px 16px; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer; border-bottom: 3px solid transparent; }
+    .tabs button.on { color: var(--brand); border-bottom-color: var(--accent); }
+    .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+    .toolbar input, .toolbar select { padding: 9px 11px; border: 1px solid #cfd7e0; border-radius: 9px; font: inherit; font-size: 14px; }
+    table tr.click { cursor: pointer; }
+    table tr.click:hover td { background: #f7fafd; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .bars { display: flex; align-items: flex-end; gap: 6px; height: 120px; padding: 10px 0; }
+    .bars div { flex: 1; background: var(--brand-light); border-radius: 4px 4px 0 0; min-height: 2px; position: relative; }
+    .bars div span { position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); font-size: 10px; color: var(--muted); white-space: nowrap; }
+    .panel-bg { position: fixed; inset: 0; background: rgba(11,44,77,.45); z-index: 50; display: flex; justify-content: flex-end; }
+    .panel { background: #fff; width: min(820px, 100%); height: 100%; overflow-y: auto; padding: 24px 26px 60px; box-shadow: -10px 0 40px rgba(0,0,0,.2); }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .kv { font-size: 14px; } .kv b { display: inline-block; min-width: 120px; color: var(--muted); font-weight: 600; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0; }
+    .actions .btn { padding: 8px 14px; font-size: 14px; }
+    .danger { color: #b91c1c !important; }
+    .pill.susp { background: #fde8e8; color: #b91c1c; }
+    .cfg span { display: inline-block; margin: 0 14px 6px 0; }
+    @media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="/"><img src="/logo-192.png" alt="">MSPoint Assist · Admin</a>
+    <nav><a href="/dashboard">Owner dashboard</a><a href="#" id="logout" class="hidden">Sign out</a></nav>
+  </div>
+</header>
+
+<main class="wrap" style="padding:30px 22px 60px">
+  <form class="box" id="login" style="max-width:440px">
+    <h2 style="margin:0">Admin sign-in</h2>
+    <p class="note" style="margin:0">Enter the ADMIN_KEY secret configured on the Worker.</p>
+    <label>Admin key<input name="key" type="password" required autocomplete="current-password"></label>
+    <label style="flex-direction:row;align-items:center;font-weight:400"><input type="checkbox" name="remember" style="width:auto"> Keep me signed in on this device</label>
+    <button class="btn" type="submit">Sign in</button>
+    <p class="err hidden" id="loginErr"></p>
+  </form>
+
+  <div id="app" class="hidden">
+    <div class="tabs">
+      <button data-tab="overview" class="on">Overview</button>
+      <button data-tab="bots">Assistants</button>
+      <button data-tab="leads">Leads</button>
+    </div>
+
+    <section id="tab-overview" style="padding:0">
+      <div class="stats" id="ovStats"></div>
+      <div class="grid2">
+        <div class="card"><h3 style="margin-top:0">Messages (14 days)</h3><div class="bars" id="ovMsgs"></div></div>
+        <div class="card"><h3 style="margin-top:0">New assistants (14 days)</h3><div class="bars" id="ovSignups"></div></div>
+      </div>
+      <div class="card cfg" style="margin-top:14px"><h3 style="margin-top:0">Configuration</h3><div id="ovCfg" class="muted"></div></div>
+    </section>
+
+    <section id="tab-bots" class="hidden" style="padding:0">
+      <div class="toolbar">
+        <input id="botSearch" placeholder="Search name, site, mail, ID…" style="flex:1;min-width:220px">
+        <select id="botFilter">
+          <option value="">All</option><option value="ready">Ready</option><option value="error">Error</option>
+          <option value="indexing">Indexing</option><option value="suspended">Suspended</option>
+        </select>
+        <button class="btn ghost" id="botRefresh">Refresh</button>
+      </div>
+      <p class="muted" id="botCount"></p>
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th>Assistant</th><th>Owner</th><th>Status</th><th>Plan</th><th>Pages</th><th>Leads</th><th>Msgs today / 30d</th><th>Created</th></tr></thead>
+        <tbody id="botRows"></tbody>
+      </table></div>
+    </section>
+
+    <section id="tab-leads" class="hidden" style="padding:0">
+      <div class="toolbar">
+        <input id="leadSearch" placeholder="Search name, mail, company, assistant…" style="flex:1;min-width:220px">
+        <select id="leadPrio"><option value="">All priorities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>
+        <button class="btn ghost" id="leadCsv">Export CSV</button>
+      </div>
+      <p class="muted" id="leadCount"></p>
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th>Date</th><th>Assistant</th><th>Priority</th><th>Name</th><th>Company</th><th>Mail</th><th>Phone</th><th>Request</th><th></th></tr></thead>
+        <tbody id="leadRows"></tbody>
+      </table></div>
+    </section>
+  </div>
+</main>
+
+<div class="panel-bg hidden" id="panelBg"><div class="panel" id="panel"></div></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let KEY = null, BOTS = [], LEADS = [];
+const store = () => { try { return window.localStorage; } catch (_) { return null; } };
+const sess = () => { try { return window.sessionStorage; } catch (_) { return null; } };
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+async function api(path, opts = {}) {
+  const r = await fetch("/api/admin" + path, { ...opts, headers: { authorization: "Bearer " + KEY, "content-type": "application/json", ...(opts.headers || {}) } });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || "Request failed (" + r.status + ")");
+  return j;
+}
+
+function statusPill(b) {
+  if (b.suspended) return '<span class="pill susp">suspended</span>';
+  return `<span class="pill ${esc(b.status)}">${esc(b.status)}</span>`;
+}
+
+function bars(el, rows, key) {
+  const days = [];
+  for (let i = 13; i >= 0; i--) days.push(new Date(Date.now() - i * 86400000).toISOString().slice(0, 10));
+  const map = Object.fromEntries(rows.map((r) => [r.day, r[key]]));
+  const max = Math.max(1, ...days.map((d) => map[d] || 0));
+  el.innerHTML = days.map((d, i) => `<div title="${d}: ${map[d] || 0}" style="height:${((map[d] || 0) / max) * 100}%">${i % 3 === 0 ? `<span>${d.slice(5)}</span>` : ""}</div>`).join("");
+}
+
+async function loadOverview() {
+  const o = await api("/overview");
+  const s = [
+    [o.bots.total, "Assistants"], [o.bots.ready, "Ready"], [o.bots.errors, "With errors"], [o.bots.suspended, "Suspended"],
+    [o.bots.new7, "New (7 days)"], [o.leads.total, "Leads total"], [o.leads.last7, "Leads (7 days)"], [o.leads.high7, "High-priority (7 days)"],
+    [o.messages.today, "Messages today"], [o.messages.last30, "Messages (30 days)"],
+  ];
+  $("ovStats").innerHTML = s.map(([n, l]) => `<div class="stat"><b>${esc(n ?? 0)}</b><span>${esc(l)}</span></div>`).join("");
+  bars($("ovMsgs"), o.series, "messages");
+  bars($("ovSignups"), o.signups, "n");
+  const c = o.config;
+  $("ovCfg").innerHTML = `<span>Mail: <b>${esc(c.mail)}</b></span><span>Turnstile: <b>${c.turnstile ? "on" : "off"}</b></span>
+    <span>Free daily messages: <b>${c.free_daily_messages}</b></span><span>Default max pages: <b>${c.max_crawl_pages}</b></span>
+    <span>Visitor hourly cap: <b>${c.visitor_hourly_messages}</b></span>`;
+}
+
+function renderBots() {
+  const q = $("botSearch").value.trim().toLowerCase();
+  const f = $("botFilter").value;
+  const list = BOTS.filter((b) => (!q || [b.name, b.site_url, b.owner_email, b.id].join(" ").toLowerCase().includes(q))
+    && (!f || (f === "suspended" ? b.suspended : !b.suspended && b.status === f)));
+  $("botCount").textContent = `${list.length} of ${BOTS.length} assistants`;
+  $("botRows").innerHTML = list.map((b) => `<tr class="click" data-id="${esc(b.id)}">
+    <td><b>${esc(b.name)}</b><br><span class="muted">${esc(b.site_url)}</span><br><span class="muted">${esc(b.id)}</span></td>
+    <td>${esc(b.owner_email)}</td><td>${statusPill(b)}</td><td>${esc(b.plan)}</td><td>${esc(b.pages_indexed)}</td>
+    <td>${esc(b.leads)}</td><td>${esc(b.msgs_today)} / ${esc(b.msgs30)}</td><td class="muted">${esc((b.created_at || "").slice(0, 10))}</td></tr>`).join("")
+    || '<tr><td colspan="8">No assistants.</td></tr>';
+}
+
+async function loadBots() {
+  const r = await api("/bots");
+  BOTS = r.bots;
+  renderBots();
+}
+
+function renderLeads() {
+  const q = $("leadSearch").value.trim().toLowerCase();
+  const list = LEADS.filter((l) => !q || [l.name, l.email, l.company, l.bot_name, l.summary, l.message].join(" ").toLowerCase().includes(q));
+  $("leadCount").textContent = `${list.length} leads`;
+  $("leadRows").innerHTML = list.map((l) => `<tr>
+    <td class="muted">${esc(l.created_at)}</td><td>${esc(l.bot_name || l.bot_id)}</td>
+    <td><span class="pill prio-${esc(l.priority || "medium")}">${esc(l.priority || "—")}</span></td>
+    <td>${esc(l.name)}</td><td>${esc(l.company)}</td><td><a href="mailto:${esc(l.email)}">${esc(l.email)}</a></td><td>${esc(l.phone)}</td>
+    <td>${l.summary ? `<b>${esc(l.summary)}</b><br>` : ""}${esc(l.message)}</td>
+    <td><button class="btn ghost danger" data-del-lead="${l.id}" style="padding:5px 10px;font-size:12px">Delete</button></td></tr>`).join("")
+    || '<tr><td colspan="9">No leads.</td></tr>';
+}
+
+async function loadLeads() {
+  const p = $("leadPrio").value;
+  const r = await api("/leads" + (p ? "?priority=" + p : ""));
+  LEADS = r.leads;
+  renderLeads();
+}
+
+function closePanel() { $("panelBg").classList.add("hidden"); }
+
+async function openBot(id) {
+  $("panelBg").classList.remove("hidden");
+  $("panel").innerHTML = "<p>Loading…</p>";
+  let b;
+  try { b = await api("/bots/" + encodeURIComponent(id)); } catch (ex) { $("panel").innerHTML = `<p class="err">${esc(ex.message)}</p>`; return; }
+  const leadsHtml = b.leads.length ? b.leads.map((l) => `<tr><td class="muted">${esc(l.created_at)}</td>
+    <td><span class="pill prio-${esc(l.priority || "medium")}">${esc(l.priority || "—")}</span></td><td>${esc(l.name)}</td>
+    <td>${esc(l.email)}</td><td>${l.summary ? `<b>${esc(l.summary)}</b><br>` : ""}${esc(l.message)}</td></tr>`).join("") : '<tr><td colspan="5">No leads.</td></tr>';
+  const msgs30 = b.usage.reduce((a, u) => a + u.messages, 0);
+  $("panel").innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+      <div><h2 style="margin:0">${esc(b.name)}</h2><a href="${esc(b.site_url)}" target="_blank" rel="noopener">${esc(b.site_url)}</a> · ${statusPill(b)}</div>
+      <button class="btn ghost" id="pClose">Close</button>
+    </div>
+    <div class="kv" style="margin-top:14px">
+      <div><b>Assistant ID</b> ${esc(b.id)}</div><div><b>Owner</b> ${esc(b.owner_email)}</div>
+      <div><b>Created</b> ${esc(b.created_at)}</div><div><b>Updated</b> ${esc(b.updated_at)}</div>
+      <div><b>Index</b> ${esc(b.pages_indexed)} pages, ${esc(b.chunks)} passages${b.status_detail ? ` — <span class="err">${esc(b.status_detail)}</span>` : ""}</div>
+      <div><b>Messages</b> ${msgs30} in 30 days · limit ${esc(b.effective_daily_limit)}/day · max pages ${esc(b.effective_max_pages)}</div>
+    </div>
+    <div class="actions">
+      <a class="btn" href="/try#${encodeURIComponent(b.id)}" target="_blank" rel="noopener">Preview chat</a>
+      <button class="btn ghost" id="pReindex">Re-index</button>
+      <button class="btn ghost" id="pSuspend">${b.suspended ? "Unsuspend" : "Suspend"}</button>
+      <button class="btn ghost" id="pLogin">Mail sign-in link to owner</button>
+      <button class="btn ghost" id="pKey">Reset owner key</button>
+      <button class="btn ghost danger" id="pDelete">Delete</button>
+    </div>
+    <p class="note" id="pMsg"></p>
+    <form class="box" id="pForm">
+      <h3 style="margin:0">Controls</h3>
+      <div class="grid2">
+        <label>Plan<select name="plan" style="padding:10px;border:1px solid #cfd7e0;border-radius:10px;font:inherit">
+          ${["free", "starter", "pro", "internal"].map((p) => `<option ${p === b.plan ? "selected" : ""}>${p}</option>`).join("")}</select></label>
+        <label>Owner mail<input name="owner_email" value="${esc(b.owner_email)}"></label>
+        <label>Daily message limit <span class="muted">(empty = default)</span><input name="daily_limit" type="number" min="0" value="${esc(b.daily_limit ?? "")}"></label>
+        <label>Max pages to index <span class="muted">(empty = default)</span><input name="max_pages" type="number" min="1" max="200" value="${esc(b.max_pages ?? "")}"></label>
+      </div>
+      <label>Assistant name<input name="name" value="${esc(b.name)}" maxlength="80"></label>
+      <label>Greeting<input name="greeting" value="${esc(b.greeting)}" maxlength="300"></label>
+      <label>Important pages <span class="muted">(one per line)</span><textarea name="priority_urls" rows="3">${esc((b.priority_urls || []).join("\n"))}</textarea></label>
+      <label>Custom instructions<textarea name="instructions" rows="6" maxlength="6000">${esc(b.instructions || "")}</textarea></label>
+      <label>Admin note <span class="muted">(private)</span><textarea name="admin_note" rows="2" maxlength="2000">${esc(b.admin_note || "")}</textarea></label>
+      <button class="btn" type="submit">Save changes</button>
+    </form>
+    <h3>Leads (${b.leads.length})</h3>
+    <div style="overflow-x:auto"><table><thead><tr><th>Date</th><th>Priority</th><th>Name</th><th>Mail</th><th>Request</th></tr></thead><tbody>${leadsHtml}</tbody></table></div>`;
+
+  const msg = (t, bad) => { $("pMsg").textContent = t; $("pMsg").className = bad ? "err" : "note"; };
+  $("pClose").onclick = closePanel;
+  $("pForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target, v = (n) => f.elements.namedItem(n).value;
+    try {
+      await api("/bots/" + encodeURIComponent(id), { method: "POST", body: JSON.stringify({
+        plan: v("plan"), owner_email: v("owner_email"), daily_limit: v("daily_limit"), max_pages: v("max_pages"),
+        name: v("name"), greeting: v("greeting"), priority_urls: v("priority_urls"), instructions: v("instructions"), admin_note: v("admin_note") }) });
+      msg("Saved."); loadBots();
+    } catch (ex) { msg(ex.message, true); }
+  };
+  $("pReindex").onclick = async () => {
+    msg("Re-indexing… (up to a minute)");
+    try { const r = await api("/bots/" + encodeURIComponent(id) + "/reindex", { method: "POST" }); msg(`Re-indexed: ${r.status}, ${r.pages_indexed} pages. Search updates in about a minute.`); loadBots(); }
+    catch (ex) { msg(ex.message, true); }
+  };
+  $("pSuspend").onclick = async () => {
+    const to = !b.suspended;
+    if (to && !confirm("Suspend this assistant? Its chat widget will disappear from the owner's website until you unsuspend it.")) return;
+    try { await api("/bots/" + encodeURIComponent(id), { method: "POST", body: JSON.stringify({ suspended: to }) }); await loadBots(); openBot(id); }
+    catch (ex) { msg(ex.message, true); }
+  };
+  $("pLogin").onclick = async () => {
+    try { const r = await api("/bots/" + encodeURIComponent(id) + "/send-login", { method: "POST" }); msg("Sign-in link sent to " + r.sent_to); }
+    catch (ex) { msg(ex.message, true); }
+  };
+  $("pKey").onclick = async () => {
+    if (!confirm("Create a new owner key? The current key stops working immediately.")) return;
+    try { const r = await api("/bots/" + encodeURIComponent(id) + "/reset-key", { method: "POST" }); msg("New owner key (shown once, share it securely): " + r.owner_key); }
+    catch (ex) { msg(ex.message, true); }
+  };
+  $("pDelete").onclick = async () => {
+    const typed = prompt(`This permanently deletes "${b.name}", its website index and all ${b.leads.length} leads. Type the assistant ID to confirm:`);
+    if (typed !== b.id) return;
+    try { await api("/bots/" + encodeURIComponent(id), { method: "DELETE" }); closePanel(); loadBots(); loadOverview(); }
+    catch (ex) { msg(ex.message, true); }
+  };
+}
+
+function showTab(t) {
+  document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
+  ["overview", "bots", "leads"].forEach((n) => $("tab-" + n).classList.toggle("hidden", n !== t));
+  if (t === "bots") loadBots().catch(fail);
+  if (t === "leads") loadLeads().catch(fail);
+  if (t === "overview") loadOverview().catch(fail);
+}
+
+function fail(ex) {
+  if (/admin key|401/i.test(ex.message)) { signOut(); $("loginErr").textContent = ex.message; $("loginErr").classList.remove("hidden"); }
+  else alert(ex.message);
+}
+
+function signOut() {
+  KEY = null;
+  const s = store(), ss = sess(); if (s) s.removeItem("msa_admin"); if (ss) ss.removeItem("msa_admin");
+  $("app").classList.add("hidden"); $("logout").classList.add("hidden"); $("login").classList.remove("hidden");
+}
+
+async function enter() {
+  await loadOverview();
+  $("login").classList.add("hidden"); $("app").classList.remove("hidden"); $("logout").classList.remove("hidden");
+}
+
+$("login").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  KEY = e.target.elements.namedItem("key").value.trim();
+  try {
+    await enter();
+    const remember = e.target.elements.namedItem("remember").checked;
+    const s = remember ? store() : sess(); if (s) s.setItem("msa_admin", KEY);
+  } catch (ex) { KEY = null; $("loginErr").textContent = ex.message; $("loginErr").classList.remove("hidden"); }
+});
+$("logout").addEventListener("click", (e) => { e.preventDefault(); signOut(); });
+document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
+$("botSearch").addEventListener("input", renderBots);
+$("botFilter").addEventListener("change", renderBots);
+$("botRefresh").addEventListener("click", () => loadBots().catch(fail));
+$("botRows").addEventListener("click", (e) => { const tr = e.target.closest("tr[data-id]"); if (tr) openBot(tr.dataset.id); });
+$("leadSearch").addEventListener("input", renderLeads);
+$("leadPrio").addEventListener("change", () => loadLeads().catch(fail));
+$("leadRows").addEventListener("click", async (e) => {
+  const id = e.target.dataset.delLead; if (!id) return;
+  if (!confirm("Delete this lead permanently?")) return;
+  try { await api("/leads/" + id, { method: "DELETE" }); loadLeads(); } catch (ex) { fail(ex); }
+});
+$("leadCsv").addEventListener("click", () => {
+  const q = (v) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+  const rows = [["created_at", "assistant", "priority", "name", "company", "email", "phone", "summary", "message", "page_url"]]
+    .concat(LEADS.map((l) => [l.created_at, l.bot_name || l.bot_id, l.priority, l.name, l.company, l.email, l.phone, l.summary, l.message, l.page_url]));
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([rows.map((r) => r.map(q).join(",")).join("\n")], { type: "text/csv" }));
+  a.download = "all-leads.csv"; a.click();
+});
+$("panelBg").addEventListener("click", (e) => { if (e.target.id === "panelBg") closePanel(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePanel(); });
+
+(function init() {
+  const saved = (sess() && sess().getItem("msa_admin")) || (store() && store().getItem("msa_admin"));
+  if (saved) { KEY = saved; enter().catch(() => signOut()); }
+})();
+</script>
+</body>
+</html>
