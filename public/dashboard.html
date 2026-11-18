@@ -21,7 +21,7 @@
   <form class="box" id="login" style="max-width:460px">
     <h2 style="margin:0">Owner dashboard</h2>
     <p class="note" style="margin:0">Use the assistant ID and owner key you received when you created your assistant.</p>
-    <label>Assistant ID<input name="bot" required placeholder="b1a2b3c4…"></label>
+    <label>Assistant ID<input name="bot" required placeholder="b1a2b3c4…" autocomplete="off" spellcheck="false"></label>
     <label>Owner key<input name="key" type="password" required placeholder="msa_…" autocomplete="current-password"></label>
     <label style="flex-direction:row;align-items:center;font-weight:400"><input type="checkbox" name="remember" style="width:auto"> Remember on this device</label>
     <button class="btn" type="submit">Open dashboard</button>
@@ -171,6 +171,12 @@ $("login").addEventListener("submit", async (e) => {
   const f = e.target;
   BOT = f.elements.namedItem("bot").value.trim();
   KEY = f.elements.namedItem("key").value.trim();
+  if (BOT.includes("@")) {
+    $("loginErr").textContent = "That looks like a mail address. The Assistant ID is a code like b1a2b3c4d5e6f7g8. Don't have it? Use \"Forgot your key?\" below and we'll mail you a sign-in link.";
+    $("loginErr").classList.remove("hidden");
+    $("forgot").elements.namedItem("email").value = BOT;
+    return;
+  }
   try {
     await openDash();
     const s = store();
