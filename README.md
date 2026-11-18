@@ -4,15 +4,32 @@
 
 Live: **https://app.mspointbd.com** · A product of **MSPoint LLC** (USA)
 
+## Screenshots
+
+**Owner dashboard** — usage, install code and assistant settings
+
+![MSPoint Assist owner dashboard](docs/images/dashboard-overview.jpg)
+
+**Leads** — every lead gets an AI priority and a one-line summary
+
+![MSPoint Assist leads with AI priority](docs/images/dashboard-leads.jpg)
+
+<sub>Screenshots use sample data.</sub>
+
 ## Features
 
 - Self-serve onboarding: enter business name, website and mail address, get an assistant in about a minute
-- Same-site crawler (sitemap-first, up to 12 pages on the free beta) built on `HTMLRewriter`
-- Retrieval-augmented answers: Workers AI embeddings (`bge-base-en-v1.5`) + Vectorize search + Llama 3.3 70B
-- Embeddable chat widget (Shadow DOM, no dependencies, ~9 KB) with lead-capture form
-- Owner dashboard: status, usage, leads, CSV export, re-index, delete
-- Free-plan quotas and spam guards (daily message cap per assistant, hourly lead cap, one free assistant per mail address)
-- Owner keys stored only as SHA-256 hashes
+- Same-site crawler (sitemap-first) built on `HTMLRewriter`, with owner-chosen **important pages** read first
+- Retrieval-augmented answers: Workers AI embeddings (`bge-base-en-v1.5`) + Vectorize search + Llama 3.3 70B, with source links
+- Core platform prompt: verified facts only, intent-aware sales and support, human handoff, multilingual replies
+- **Custom instructions** per assistant (role, tone, focus), layered under the core rules
+- Embeddable chat widget (Shadow DOM, no dependencies) with lead form that opens automatically when a visitor types a mail address
+- **AI lead qualification**: high / medium / low priority, one-line summary and chat transcript on every lead
+- **Lead alert mails**, welcome mail and **sign-in by mail** (one-time link that rotates the owner key), via Zoho ZeptoMail or Zoho Mail SMTP
+- Owner dashboard: usage, install code, settings, leads, CSV export, re-index, preview page, delete
+- **Admin dashboard** (`/admin`): every assistant with search and filters, suspend, plans, per-assistant limits, re-index, key reset, sign-in links, all leads with CSV export
+- Security: Cloudflare Turnstile on signup, per-assistant daily quota, per-visitor hourly cap (hashed IP), owner keys stored as SHA-256 hashes, admin lockout after repeated failures, prompt-injection and prompt-leak guards in code
+- Privacy Policy and Terms pages
 
 ## Architecture
 
