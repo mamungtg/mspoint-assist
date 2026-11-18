@@ -58,6 +58,8 @@
     <form class="box" id="settings" style="margin-bottom:28px">
       <label>Assistant name <span class="note" style="font-weight:400">— shown at the top of the chat window</span><input name="name" maxlength="80" required></label>
       <label>Greeting message<input name="greeting" maxlength="300" placeholder="Hi! How can I help you today?"></label>
+      <label>Important pages <span class="note" style="font-weight:400">— up to 10 page addresses on your site, one per line. They are always read first when the site is indexed (for example pricing, services, FAQ, contact).</span>
+        <textarea name="priority_urls" rows="4" placeholder="https://yoursite.com/pricing&#10;https://yoursite.com/services"></textarea></label>
       <label>Custom instructions <span class="note" style="font-weight:400">— role, tone, services to focus on, what to ask visitors. Facts still come only from your website.</span>
         <textarea name="instructions" rows="12" maxlength="6000" placeholder="You are the assistant for … Focus on … Ask visitors about …"></textarea></label>
       <div style="display:flex;gap:12px;align-items:center"><button class="btn" type="submit">Save settings</button><span class="note" id="setMsg"></span><span class="note" id="setCount" style="margin-left:auto"></span></div>
@@ -103,6 +105,10 @@ async function load() {
   $("embed").textContent = b.embed_code;
   const sf = $("settings");
   sf.elements.namedItem("name").value = b.name || "";
+  sf.elements.namedItem("priority_urls").value = (b.priority_urls || []).join("\n");
+  for (const idName of ["settings", "reindex", "del"]) $(idName).classList.toggle("hidden", !!b.is_demo);
+  const settingsTitle = [...document.querySelectorAll("h3")].find((h) => h.textContent === "Assistant settings");
+  if (settingsTitle) settingsTitle.classList.toggle("hidden", !!b.is_demo);
   sf.elements.namedItem("greeting").value = b.greeting || "";
   $("preview").href = "/try#" + encodeURIComponent(b.id);
   sf.elements.namedItem("instructions").value = b.instructions || "";
@@ -180,9 +186,10 @@ $("settings").addEventListener("submit", async (e) => {
   try {
     await api("/api/bots/" + encodeURIComponent(BOT) + "/settings", { method: "POST", body: JSON.stringify({
       name: f.elements.namedItem("name").value,
+      priority_urls: f.elements.namedItem("priority_urls").value,
       greeting: f.elements.namedItem("greeting").value, instructions: f.elements.namedItem("instructions").value }) });
     $("bName").textContent = f.elements.namedItem("name").value;
-    $("setMsg").textContent = "Saved. New chats use these settings right away — try them in Preview.";
+    $("setMsg").textContent = "Saved. New chats use these settings right away. If you changed important pages, click Re-index website.";
   } catch (ex) { $("setMsg").textContent = ex.message; }
   finally { btn.disabled = false; }
 });

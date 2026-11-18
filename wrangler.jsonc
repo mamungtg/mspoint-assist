@@ -37,6 +37,7 @@
     "PRODUCT_NAME": "MSPoint Assist",
     "FREE_DAILY_MESSAGES": "100",
     "MAX_CRAWL_PAGES": "12",
+    "VISITOR_HOURLY_MESSAGES": "30",
     // Public Turnstile site key. The matching secret is set in the dashboard as
     // the encrypted variable TURNSTILE_SECRET; the check is enforced only when it exists.
     "TURNSTILE_SITE_KEY": "0x4AAAAAAGCRbUVQXkDasE58"

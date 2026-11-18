@@ -140,3 +140,29 @@ export function safeEqual(a, b) {
 export function today() {
   return new Date().toISOString().slice(0, 10);
 }
+
+export const MAX_PRIORITY_URLS = 10;
+
+// Accepts an array or newline/comma separated text; keeps valid same-site http(s) URLs.
+export function parsePriorityUrls(input, siteUrl) {
+  const raw = Array.isArray(input) ? input : String(input || "").split(/[\n,]+/);
+  const out = [];
+  for (let s of raw) {
+    s = String(s || "").trim();
+    if (!s) continue;
+    if (s.startsWith("/")) s = new URL(s, siteUrl).toString();
+    else if (!/^https?:\/\//i.test(s)) s = "https://" + s;
+    let u;
+    try { u = new URL(s); } catch { throw new HttpError(400, `Not a valid page address: ${clip(s, 80)}`); }
+    if (!sameSite(u.toString(), siteUrl)) throw new HttpError(400, `Important pages must be on your own website: ${clip(s, 80)}`);
+    u.hash = "";
+    const v = u.toString();
+    if (!out.includes(v)) out.push(v);
+    if (out.length > MAX_PRIORITY_URLS) throw new HttpError(400, `You can add up to ${MAX_PRIORITY_URLS} important pages.`);
+  }
+  return out;
+}
+
+export function hourKey(d = new Date()) {
+  return d.toISOString().slice(0, 13);
+}

@@ -53,3 +53,13 @@ test("urlScore prefers product pages over investor/news pages", () => {
   assert.ok(good > news);
   assert.ok(urlScore("https://x.com/contact") > urlScore("https://x.com/privacy-policy"));
 });
+
+import { parsePriorityUrls } from "../src/util.js";
+test("parsePriorityUrls keeps same-site pages and rejects others", () => {
+  const site = "https://acme.com/";
+  assert.deepEqual(parsePriorityUrls("https://acme.com/pricing\n/contact\nwww.acme.com/faq", site),
+    ["https://acme.com/pricing", "https://acme.com/contact", "https://www.acme.com/faq"]);
+  assert.throws(() => parsePriorityUrls("https://evil.com/x", site));
+  assert.throws(() => parsePriorityUrls(Array.from({ length: 11 }, (_, i) => `/p${i}`), site));
+  assert.deepEqual(parsePriorityUrls("", site), []);
+});

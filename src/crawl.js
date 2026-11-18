@@ -16,8 +16,9 @@ export function urlScore(u) {
   return score;
 }
 
-function sortQueue(queue) {
-  queue.sort((a, b) => urlScore(b) - urlScore(a));
+function sortQueue(queue, pinned) {
+  const score = (u) => (pinned.has(u) ? 1000 : 0) + urlScore(u);
+  queue.sort((a, b) => score(b) - score(a));
 }
 
 const UA = "MSPointAssistBot/0.1 (+https://app.mspointbd.com)";
@@ -73,9 +74,17 @@ async function fetchHtml(url) {
 }
 
 // Breadth-first crawl starting at rootUrl, staying on the same site.
-export async function crawlSite(rootUrl, maxPages = 12) {
+// priorityUrls: owner-chosen pages on the same site, always crawled right after the homepage.
+export async function crawlSite(rootUrl, maxPages = 12, priorityUrls = []) {
   const queue = [canonical(rootUrl)];
   const seen = new Set(queue);
+  const pinned = new Set();
+  for (const u of priorityUrls) {
+    if (!isCrawlable(u, rootUrl)) continue;
+    const c = canonical(u);
+    pinned.add(c);
+    if (!seen.has(c)) { seen.add(c); queue.push(c); }
+  }
   const pages = [];
 
   // Pull in sitemap URLs when available (cheap way to find key pages).
@@ -98,7 +107,7 @@ export async function crawlSite(rootUrl, maxPages = 12) {
   const CONCURRENCY = 4;
   let attempts = 0;
   while (queue.length && pages.length < maxPages && attempts < maxPages * 3) {
-    if (pages.length > 0) sortQueue(queue); // keep the homepage first, then prioritise
+    if (pages.length > 0 || attempts > 0) sortQueue(queue, pinned); // homepage first, then owner pages, then best guesses
     const batch = queue.splice(0, Math.min(CONCURRENCY, maxPages - pages.length));
     attempts += batch.length;
     const results = await Promise.all(batch.map(async (url) => {

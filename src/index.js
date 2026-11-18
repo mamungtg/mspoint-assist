@@ -3,7 +3,7 @@ import { crawlSite } from "./crawl.js";
 import { MAX_INSTRUCTIONS, answer, deleteBotVectors, indexBot, qualifyLead, retrieve } from "./rag.js";
 import { DEMO_BOT, DEMO_KNOWLEDGE } from "./demo.js";
 import {
-  CORS, HttpError, clip, isEmail, json, normalizeUrl, randomId, randomKey, safeEqual, sha256, today,
+  CORS, HttpError, clip, hourKey, isEmail, json, normalizeUrl, parsePriorityUrls, randomId, randomKey, safeEqual, sha256, today,
 } from "./util.js";
 
 async function readJson(request) {
@@ -22,11 +22,26 @@ async function getBot(env, id) {
   return env.DB.prepare("SELECT * FROM bots WHERE id = ?").bind(id).first();
 }
 
-async function requireOwner(env, request, id) {
-  const bot = await getBot(env, id);
-  if (!bot || id === DEMO_BOT.id) throw new HttpError(404, "Assistant not found.");
+function bearer(request) {
   const auth = request.headers.get("authorization") || "";
-  const key = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  return auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+}
+
+// The built-in demo assistant is owned by MSPoint: its leads open with the ADMIN_KEY secret.
+async function requireOwner(env, request, id, { allowDemo = false } = {}) {
+  const key = bearer(request);
+  if (id === DEMO_BOT.id) {
+    if (!allowDemo) throw new HttpError(403, "The demo assistant cannot be changed.");
+    if (!env.ADMIN_KEY || !key || !safeEqual(await sha256(key), await sha256(env.ADMIN_KEY))) {
+      throw new HttpError(401, "Invalid owner key.");
+    }
+    return {
+      ...DEMO_BOT, status: "ready", owner_email: "support@mspointbd.com", plan: "internal",
+      status_detail: null, pages_indexed: 0, chunks: 0, created_at: null, updated_at: null, instructions: "",
+    };
+  }
+  const bot = await getBot(env, id);
+  if (!bot) throw new HttpError(404, "Assistant not found.");
   if (!key || !safeEqual(await sha256(key), bot.key_hash)) throw new HttpError(401, "Invalid owner key.");
   return bot;
 }
@@ -44,7 +59,9 @@ function publicBot(bot) {
 // Crawl + index, then record the result in D1.
 async function runIndexing(env, bot, maxPages) {
   try {
-    const pages = await crawlSite(bot.site_url, maxPages);
+    let priority = [];
+    try { priority = JSON.parse(bot.priority_urls || "[]"); } catch { priority = []; }
+    const pages = await crawlSite(bot.site_url, maxPages, priority);
     if (!pages.length) {
       await env.DB.prepare(
         "UPDATE bots SET status='error', status_detail=?, updated_at=datetime('now') WHERE id=?",
@@ -131,7 +148,7 @@ async function botInfo(env, id) {
   return json(publicBot(bot), 200, { "cache-control": "public, max-age=30" });
 }
 
-async function chat(request, env) {
+async function chat(request, env, ctx) {
   const body = await readJson(request);
   const bot = await getBot(env, String(body.bot || ""));
   if (!bot) throw new HttpError(404, "Assistant not found.");
@@ -142,7 +159,23 @@ async function chat(request, env) {
   if (!question) throw new HttpError(400, "Message is empty.");
   const history = Array.isArray(body.history) ? body.history.slice(-6) : [];
 
-  // Daily quota per assistant (free beta) — also limits abuse.
+  // Per-visitor limit: one person cannot use up the assistant's daily quota.
+  const ip = request.headers.get("cf-connecting-ip") || "unknown";
+  const visitor = (await sha256(ip + "|" + bot.id)).slice(0, 32);
+  const hour = hourKey();
+  const v = await env.DB.prepare(
+    `INSERT INTO visitor_usage (bot_id, visitor, hour, messages) VALUES (?, ?, ?, 1)
+     ON CONFLICT (bot_id, visitor, hour) DO UPDATE SET messages = messages + 1
+     RETURNING messages`,
+  ).bind(bot.id, visitor, hour).first();
+  if ((v?.messages || 0) > Number(env.VISITOR_HOURLY_MESSAGES || 30)) {
+    return json({ reply: "You've sent a lot of messages in a short time. Please wait a little, or leave your details and the team will reply to you directly.", lead_prompt: true });
+  }
+  if (Math.random() < 0.02) {
+    ctx.waitUntil(env.DB.prepare("DELETE FROM visitor_usage WHERE hour < ?").bind(hourKey(new Date(Date.now() - 2 * 86400_000))).run());
+  }
+
+  // Daily quota per assistant (free beta).
   const limit = Number(env.FREE_DAILY_MESSAGES || 100) * (bot.id === DEMO_BOT.id ? 10 : 1);
   const day = today();
   const row = await env.DB.prepare(
@@ -205,7 +238,7 @@ async function createLead(request, env) {
 }
 
 async function ownerBot(request, env, id) {
-  const bot = await requireOwner(env, request, id);
+  const bot = await requireOwner(env, request, id, { allowDemo: true });
   const usage = await env.DB.prepare(
     "SELECT day, messages FROM usage WHERE bot_id = ? ORDER BY day DESC LIMIT 30",
   ).bind(id).all();
@@ -217,6 +250,8 @@ async function ownerBot(request, env, id) {
     created_at: bot.created_at, updated_at: bot.updated_at, leads: leadCount?.n || 0,
     usage: usage.results || [],
     instructions: bot.instructions || "", greeting: bot.greeting || "",
+    priority_urls: (() => { try { return JSON.parse(bot.priority_urls || "[]"); } catch { return []; } })(),
+    is_demo: bot.id === DEMO_BOT.id,
     embed_code: `<script src="${origin}/widget.js" data-bot="${bot.id}" async></script>`,
   });
 }
@@ -227,6 +262,8 @@ async function updateSettings(request, env, id) {
   const instructions = typeof body.instructions === "string" ? body.instructions.trim() : null;
   const greeting = typeof body.greeting === "string" ? clip(body.greeting, 300) : null;
   const name = typeof body.name === "string" ? clip(body.name, 80) : null;
+  const bot = await getBot(env, id);
+  const priority = body.priority_urls !== undefined ? JSON.stringify(parsePriorityUrls(body.priority_urls, bot.site_url)) : null;
   if (instructions && instructions.length > MAX_INSTRUCTIONS) {
     throw new HttpError(400, `Instructions are too long (max ${MAX_INSTRUCTIONS} characters).`);
   }
@@ -235,14 +272,15 @@ async function updateSettings(request, env, id) {
        instructions = COALESCE(?, instructions),
        greeting = COALESCE(NULLIF(?, ''), greeting),
        name = COALESCE(NULLIF(?, ''), name),
+       priority_urls = COALESCE(?, priority_urls),
        updated_at = datetime('now')
      WHERE id = ?`,
-  ).bind(instructions, greeting, name, id).run();
+  ).bind(instructions, greeting, name, priority, id).run();
   return json({ ok: true });
 }
 
 async function ownerLeads(request, env, id) {
-  await requireOwner(env, request, id);
+  await requireOwner(env, request, id, { allowDemo: true });
   const rows = await env.DB.prepare(
     "SELECT id, name, company, email, phone, message, priority, summary, transcript, page_url, created_at FROM leads WHERE bot_id = ? ORDER BY created_at DESC LIMIT 500",
   ).bind(id).all();
@@ -290,7 +328,7 @@ async function route(request, env, ctx) {
     return json({ turnstile_site_key: env.TURNSTILE_SECRET ? (env.TURNSTILE_SITE_KEY || null) : null }, 200, { "cache-control": "public, max-age=300" });
   }
   if (pathname === "/api/bots" && m === "POST") return createBot(request, env);
-  if (pathname === "/api/chat" && m === "POST") return chat(request, env);
+  if (pathname === "/api/chat" && m === "POST") return chat(request, env, ctx);
   if (pathname === "/api/leads" && m === "POST") return createLead(request, env);
 
   let p;
