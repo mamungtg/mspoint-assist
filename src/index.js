@@ -213,7 +213,7 @@ async function chat(request, env, ctx) {
   const reply = await answer(env, {
     businessName: bot.name, siteUrl: bot.site_url, context, history, question, instructions: bot.instructions,
   });
-  const unsure = /not sure|don't have|do not have|couldn't find|pass (your|the) question|leave your/i.test(reply);
+  const unsure = /not sure|couldn't find|could not find|don't have|do not have|contact the team|pass (your|the) question|leave your|name and (e-?mail|mail)|follow up with you/i.test(reply);
   return json({ reply, sources, lead_prompt: unsure || !context });
 }
 
