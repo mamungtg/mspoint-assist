@@ -1,6 +1,6 @@
 // MSPoint Assist — Worker entry point (API under /api/*, everything else is static assets).
 import { crawlSite } from "./crawl.js";
-import { MAX_INSTRUCTIONS, answer, deleteBotVectors, indexBot, qualifyLead, retrieve } from "./rag.js";
+import { MAX_INSTRUCTIONS, REFUSAL, answer, deleteBotVectors, indexBot, looksLikeInjection, qualifyLead, retrieve } from "./rag.js";
 import { DEMO_BOT, DEMO_KNOWLEDGE } from "./demo.js";
 import { leadAlertMail, loginMail, mailEnabled, sendMail, welcomeMail } from "./mail.js";
 import {
@@ -199,6 +199,9 @@ async function chat(request, env, ctx) {
   if ((row?.messages || 0) > limit) {
     return json({ reply: "The assistant has reached today's message limit. Please leave your details and the team will reply to you directly.", lead_prompt: true });
   }
+
+  // Obvious prompt-injection attempts get a fixed reply without calling the model.
+  if (looksLikeInjection(question)) return json({ reply: REFUSAL, sources: [], lead_prompt: false });
 
   let context;
   let sources = [];
