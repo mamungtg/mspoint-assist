@@ -38,6 +38,10 @@
     "FREE_DAILY_MESSAGES": "100",
     "MAX_CRAWL_PAGES": "12",
     "VISITOR_HOURLY_MESSAGES": "30",
+    // Transactional mail (Zoho ZeptoMail). Secret ZEPTOMAIL_TOKEN is set in the dashboard.
+    "MAIL_FROM": "noreply@notify.mspointbd.com",
+    "MAIL_FROM_NAME": "MSPoint Assist",
+    "DEMO_LEAD_MAIL": "support@mspointbd.com",
     // Public Turnstile site key. The matching secret is set in the dashboard as
     // the encrypted variable TURNSTILE_SECRET; the check is enforced only when it exists.
     "TURNSTILE_SITE_KEY": "0x4AAAAAAGCRbUVQXkDasE58"

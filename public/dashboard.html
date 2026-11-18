@@ -26,7 +26,23 @@
     <label style="flex-direction:row;align-items:center;font-weight:400"><input type="checkbox" name="remember" style="width:auto"> Remember on this device</label>
     <button class="btn" type="submit">Open dashboard</button>
     <p class="err hidden" id="loginErr"></p>
+    <p class="note" style="margin:0"><a href="#" id="forgotLink">Forgot your key?</a></p>
   </form>
+
+  <form class="box hidden" id="forgot" style="max-width:460px">
+    <h2 style="margin:0">Sign in by mail</h2>
+    <p class="note" style="margin:0">Enter the mail address you used when creating your assistant. We'll send a one-time sign-in link. Signing in creates a new owner key.</p>
+    <label>Mail address<input name="email" type="email" required maxlength="200" placeholder="you@yourbusiness.com"></label>
+    <button class="btn" type="submit">Send sign-in link</button>
+    <p class="note hidden" id="forgotMsg"></p>
+    <p class="note" style="margin:0"><a href="#" id="backToLogin">← Back to key sign-in</a></p>
+  </form>
+
+  <div class="result hidden" id="newKey" style="max-width:720px;margin-bottom:20px">
+    <h3>You're signed in — save your new owner key</h3>
+    <p>Your previous key no longer works. Store this one in a password manager.</p>
+    <code id="newKeyVal"></code>
+  </div>
 
   <div id="app" class="hidden">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap">
@@ -144,6 +160,7 @@ async function load() {
 
 async function openDash() {
   $("login").classList.add("hidden");
+  $("forgot").classList.add("hidden");
   $("app").classList.remove("hidden");
   $("logout").classList.remove("hidden");
   await load();
@@ -208,7 +225,33 @@ $("del").addEventListener("click", async () => {
   catch (ex) { alert(ex.message); }
 });
 
+$("forgotLink").addEventListener("click", (e) => { e.preventDefault(); $("login").classList.add("hidden"); $("forgot").classList.remove("hidden"); });
+$("backToLogin").addEventListener("click", (e) => { e.preventDefault(); $("forgot").classList.add("hidden"); $("login").classList.remove("hidden"); });
+$("forgot").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = e.target.querySelector("button"); btn.disabled = true;
+  const msg = $("forgotMsg"); msg.classList.remove("hidden"); msg.textContent = "Sending…";
+  try {
+    const r = await fetch("/api/auth/request", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: e.target.elements.namedItem("email").value }) });
+    const j = await r.json().catch(() => ({}));
+    msg.textContent = r.ok ? j.message : (j.error || "Something went wrong.");
+  } catch (_) { msg.textContent = "Connection problem. Please try again."; }
+  finally { btn.disabled = false; }
+});
+
+async function magicLogin(token) {
+  history.replaceState(null, "", "/dashboard");
+  const r = await fetch("/api/auth/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { $("loginErr").textContent = j.error || "Sign-in failed."; $("loginErr").classList.remove("hidden"); return; }
+  BOT = j.bot_id; KEY = j.owner_key;
+  const s = store(); if (s) { s.setItem("msa_bot", BOT); s.setItem("msa_key", KEY); }
+  $("newKeyVal").textContent = KEY; $("newKey").classList.remove("hidden");
+  await openDash();
+}
+
 (function init() {
+  if (location.hash.startsWith("#login=")) { magicLogin(decodeURIComponent(location.hash.slice(7))); return; }
   const s = store();
   const hashBot = location.hash.slice(1);
   const savedBot = s && s.getItem("msa_bot");

@@ -2,6 +2,7 @@
 import { crawlSite } from "./crawl.js";
 import { MAX_INSTRUCTIONS, answer, deleteBotVectors, indexBot, qualifyLead, retrieve } from "./rag.js";
 import { DEMO_BOT, DEMO_KNOWLEDGE } from "./demo.js";
+import { leadAlertMail, loginMail, mailEnabled, sendMail, welcomeMail } from "./mail.js";
 import {
   CORS, HttpError, clip, hourKey, isEmail, json, normalizeUrl, parsePriorityUrls, randomId, randomKey, safeEqual, sha256, today,
 } from "./util.js";
@@ -103,7 +104,7 @@ async function verifyTurnstile(env, token, ip) {
 
 // ---- Handlers ---------------------------------------------------------------
 
-async function createBot(request, env) {
+async function createBot(request, env, ctx) {
   const body = await readJson(request);
   const name = clip(body.name, 80);
   const email = clip(body.email, 200).toLowerCase();
@@ -131,6 +132,8 @@ async function createBot(request, env) {
   const done = await getBot(env, id);
 
   const origin = new URL(request.url).origin;
+  const w = welcomeMail({ botName: name, botId: id, dashboardUrl: `${origin}/dashboard#${id}`, previewUrl: `${origin}/try#${id}` });
+  ctx.waitUntil(sendMail(env, { to: email, toName: name, ...w }).catch((e) => console.error("welcome mail", e)));
   return json({
     id,
     owner_key: key,
@@ -204,7 +207,7 @@ async function chat(request, env, ctx) {
   return json({ reply, sources, lead_prompt: unsure || !context });
 }
 
-async function createLead(request, env) {
+async function createLead(request, env, ctx) {
   const body = await readJson(request);
   const bot = await getBot(env, String(body.bot || ""));
   if (!bot) throw new HttpError(404, "Assistant not found.");
@@ -234,6 +237,13 @@ async function createLead(request, env) {
     bot.id, lead.name, email, lead.phone, lead.message, lead.page_url,
     lead.company, priority, summary, transcript.length ? JSON.stringify(transcript) : null,
   ).run();
+
+  const ownerMail = bot.id === DEMO_BOT.id ? (env.DEMO_LEAD_MAIL || "support@mspointbd.com") : bot.owner_email;
+  if (ownerMail) {
+    const origin = new URL(request.url).origin;
+    const m = leadAlertMail({ botName: bot.name, lead: { ...lead, email }, priority, summary, dashboardUrl: `${origin}/dashboard#${bot.id}` });
+    ctx.waitUntil(sendMail(env, { to: ownerMail, ...m, replyTo: email }).catch((e) => console.error("lead alert", e)));
+  }
   return json({ ok: true }, 201);
 }
 
@@ -314,6 +324,51 @@ async function deleteBot(request, env, id) {
   return json({ ok: true, vector_cleanup: vectorError ? "pending" : "done" });
 }
 
+// ---- Mail sign-in (owner key recovery) ----------------------------------------
+
+async function requestLogin(request, env) {
+  if (!mailEnabled(env)) throw new HttpError(503, "Sign-in by mail is not available yet. Please contact support@mspointbd.com.");
+  const body = await readJson(request);
+  const email = clip(body.email, 200).toLowerCase();
+  if (!isEmail(email)) throw new HttpError(400, "Please enter a valid mail address.");
+  const generic = json({ ok: true, message: "If this address has an assistant, a sign-in link is on its way. Check your inbox and spam folder." });
+
+  const recent = await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM login_tokens WHERE email = ? AND created_at > datetime('now', '-2 minutes')",
+  ).bind(email).first();
+  if ((recent?.n || 0) > 0) return generic;
+
+  const bots = await env.DB.prepare("SELECT id, name FROM bots WHERE owner_email = ? LIMIT 10").bind(email).all();
+  const list = bots.results || [];
+  if (!list.length) return generic;
+
+  const origin = new URL(request.url).origin;
+  const expires = new Date(Date.now() + 30 * 60_000).toISOString();
+  const links = [];
+  for (const b of list) {
+    const token = randomKey().replace(/^msa_/, "");
+    await env.DB.prepare("INSERT INTO login_tokens (token_hash, email, bot_id, expires_at) VALUES (?, ?, ?, ?)")
+      .bind(await sha256(token), email, b.id, expires).run();
+    links.push({ name: b.name, url: `${origin}/dashboard#login=${token}` });
+  }
+  await sendMail(env, { to: email, ...loginMail({ links }) });
+  await env.DB.prepare("DELETE FROM login_tokens WHERE expires_at < ?").bind(new Date(Date.now() - 86400_000).toISOString()).run();
+  return generic;
+}
+
+async function verifyLogin(request, env) {
+  const body = await readJson(request);
+  const token = String(body.token || "").trim();
+  if (!token || token.length > 200) throw new HttpError(400, "Invalid sign-in link.");
+  const row = await env.DB.prepare(
+    "UPDATE login_tokens SET used = 1 WHERE token_hash = ? AND used = 0 AND expires_at > ? RETURNING bot_id",
+  ).bind(await sha256(token), new Date().toISOString()).first();
+  if (!row) throw new HttpError(400, "This sign-in link has expired or was already used. Please request a new one.");
+  const key = randomKey();
+  await env.DB.prepare("UPDATE bots SET key_hash = ?, updated_at = datetime('now') WHERE id = ?").bind(await sha256(key), row.bot_id).run();
+  return json({ bot_id: row.bot_id, owner_key: key });
+}
+
 // ---- Router -----------------------------------------------------------------
 
 async function route(request, env, ctx) {
@@ -327,9 +382,11 @@ async function route(request, env, ctx) {
   if (pathname === "/api/config" && m === "GET") {
     return json({ turnstile_site_key: env.TURNSTILE_SECRET ? (env.TURNSTILE_SITE_KEY || null) : null }, 200, { "cache-control": "public, max-age=300" });
   }
-  if (pathname === "/api/bots" && m === "POST") return createBot(request, env);
+  if (pathname === "/api/bots" && m === "POST") return createBot(request, env, ctx);
   if (pathname === "/api/chat" && m === "POST") return chat(request, env, ctx);
-  if (pathname === "/api/leads" && m === "POST") return createLead(request, env);
+  if (pathname === "/api/leads" && m === "POST") return createLead(request, env, ctx);
+  if (pathname === "/api/auth/request" && m === "POST") return requestLogin(request, env);
+  if (pathname === "/api/auth/verify" && m === "POST") return verifyLogin(request, env);
 
   let p;
   if ((p = pathname.match(/^\/api\/bots\/([a-z0-9_]+)\/public$/)) && m === "GET") return botInfo(env, p[1]);
